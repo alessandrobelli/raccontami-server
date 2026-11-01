@@ -1,0 +1,7 @@
+# Voice environment "env-a": VoxCPM2 (Italian narrator). Install PyTorch with CUDA first:
+#   pip install torch==2.11.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+voxcpm==2.0.3
+soundfile
+numpy
+# Windows only: the compiler VoxCPM2 needs for its fast mode (Linux PyTorch ships its own Triton)
+triton-windows>=3.7,<3.8; sys_platform == "win32"

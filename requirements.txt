@@ -1,0 +1,15 @@
+# Server environment ("env"): sync, alignment, API. Install PyTorch with CUDA first:
+#   pip install torch==2.11.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+openai-whisper
+transformers>=4.57
+num2words
+rapidfuzz
+numpy
+fastapi
+uvicorn
+python-multipart
+wordfreq
+# tools/export_phone_model.py (models for syncing on the phone)
+onnx
+onnxscript
+onnxruntime

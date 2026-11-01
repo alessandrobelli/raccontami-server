@@ -1,0 +1,7 @@
+# Voice environment "env-c": Qwen3-TTS with CUDA graphs (English voice "Aiden"). Install PyTorch with CUDA first:
+#   pip install torch==2.11.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+faster-qwen3-tts==0.5.4
+transformers==5.15.1   # newer 5.x breaks the Qwen tokenizer (property 'upsample' has no setter)
+soundfile
+numpy
+triton-windows>=3.7,<3.8; sys_platform == "win32"
