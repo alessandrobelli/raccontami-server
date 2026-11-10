@@ -1,6 +1,6 @@
 # Server API
 
-Every request needs `Authorization: Bearer <token>`. JSON in and out unless noted.
+Every request except `/v1/hello` needs `Authorization: Bearer <token>`. JSON in and out unless noted.
 A job's id is a hash of its inputs: sending the same thing twice returns the existing job.
 
 ## Health
