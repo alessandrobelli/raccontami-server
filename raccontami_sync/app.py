@@ -45,6 +45,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
 from . import narrate, pipeline  # noqa: E402
+from .jsonfile import read_json, write_json  # noqa: E402
 
 JOBS = DATA / "jobs"
 JOBS.mkdir(parents=True, exist_ok=True)
@@ -111,7 +112,14 @@ class JobState:
         self.progress = 0.0
         self.error = None
         self.started = None
+        self.base = 0.0  # progress when this run started: more than 0 for a narration resumed after a restart
+        self.saved_at = 0.0
         self.history: list[tuple[float, float]] = []  # (time, progress) for the ETA
+
+    def begin(self):
+        """The worker picked the job up."""
+        self.state, self.started, self.base = "running", time.monotonic(), self.progress
+        self.save()
 
     def set_progress(self, stage: str, frac: float):
         done = 0.0
@@ -131,6 +139,13 @@ class JobState:
         now = time.monotonic()
         self.history.append((now, self.progress))
         self.history = [h for h in self.history if now - h[0] < 120]  # last two minutes
+        # keep the progress on disk too, so after a restart the phone does not see it fall back to 0
+        if self.state == "running" and now - self.saved_at >= 30:
+            self.saved_at = now
+            try:
+                self.save()
+            except OSError:
+                pass  # the next save will do; reporting progress must never stop the job
 
     def label(self) -> str:
         return ("narration " if self.kind == "narrate" else "sync ") + self.id[:8]
@@ -140,16 +155,17 @@ class JobState:
             return None
         (t0, p0), (t1, p1) = self.history[0], self.history[-1]
         if p1 <= p0 or t1 - t0 < 5:
+            # only what this run did: a resumed narration starts far from 0
             elapsed = time.monotonic() - self.started
-            rate = self.progress / elapsed if elapsed > 0 else 0
+            rate = (self.progress - self.base) / elapsed if elapsed > 0 else 0
         else:
             rate = (p1 - p0) / (t1 - t0)
         return round((1 - self.progress) / rate) if rate > 0 else None
 
     def save(self):
-        (self.dir / "status.json").write_text(json.dumps(
-            {"state": self.state, "stage": self.stage, "progress": self.progress, "error": self.error,
-             "kind": self.kind}), encoding="utf-8")
+        write_json(self.dir / "status.json",
+                   {"state": self.state, "stage": self.stage, "progress": self.progress, "error": self.error,
+                    "kind": self.kind})
 
     def view(self):
         return {"id": self.id, "kind": self.kind, "state": self.state, "stage": self.stage,
@@ -163,16 +179,34 @@ work: "queue.Queue[str]" = queue.Queue()
 narrations: "queue.Queue[str]" = queue.Queue()
 
 
+def _recovered_status(d: Path):
+    """A status for a job whose status.json cannot be read: finished when its result is there,
+    to be run again when what the phone sent is there, otherwise None."""
+    kind = "narrate" if d.name.startswith("n") else "sync"  # narration ids start with "n" (create_narration)
+    if (d / "result.json").exists():
+        return {"state": "done", "stage": "done", "progress": 1.0, "error": None, "kind": kind}
+    if (d / "meta.json").exists():
+        return {"state": "queued", "stage": "queued", "progress": 0.0, "error": None, "kind": kind}
+    return None
+
+
 def _load_existing():
     for d in JOBS.iterdir():
         st = d / "status.json"
         if not st.exists():
             continue
-        s = json.loads(st.read_text(encoding="utf-8"))
+        s = read_json(st)
+        if not isinstance(s, dict) or "state" not in s:
+            s = _recovered_status(d)
+            if s is None:
+                log(f"  job {d.name[:8]} skipped: its status file cannot be read and it has nothing to resume from")
+                continue
+            log(f"  job {d.name[:8]}: its status file was damaged (a power cut?); taken as {s['state']}")
         j = JobState(d.name, s.get("kind", "sync"))
-        if (d / "release.json").exists() and s["state"] != "done":
-            j.partial = json.loads((d / "release.json").read_text(encoding="utf-8"))
-        j.state, j.stage, j.progress, j.error = s["state"], s["stage"], s["progress"], s["error"]
+        if s["state"] != "done":
+            j.partial = read_json(d / "release.json")  # None when there is no part yet, or the file is damaged
+        j.state, j.stage = s["state"], s.get("stage", s["state"])
+        j.progress, j.error = float(s.get("progress") or 0.0), s.get("error")
         if j.state in ("queued", "running"):  # interrupted by a restart: run again (narrations keep their pieces)
             j.state, j.stage = "queued", "queued"
             if j.kind == "sync":
@@ -190,8 +224,7 @@ def _worker():
                 log("idle for 10 min: models unloaded from the GPU")
             continue
         j = jobs[job_id]
-        j.state, j.started = "running", time.monotonic()
-        j.save()
+        j.begin()
         log(f"{j.label()}: started")
         try:
             meta = json.loads((j.dir / "meta.json").read_text(encoding="utf-8"))
@@ -215,8 +248,7 @@ def _narration_worker():
         j = jobs.get(narrations.get())
         if j is None or j.cancelled:
             continue
-        j.state, j.started = "running", time.monotonic()
-        j.save()
+        j.begin()
         log(f"{j.label()}: started (preparing the voice can take a few minutes the first time)")
 
         def on_release(info, j=j):

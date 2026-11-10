@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .jsonfile import read_json, write_json
 from .pipeline import ALIGN_MODELS, SR, Models, Progress, Result, fill_missing
 from .textnorm import norm_parts
 
@@ -211,6 +212,18 @@ def release_threshold(release: int, first: float) -> float:
     return first * 2 ** (release - 1)
 
 
+def last_release(job: Path) -> int:
+    """Number of the latest part published for this job, 0 when there is none.
+
+    The phone only takes a part with a higher number than the one it has, so this must
+    never go back: when release.json cannot be read, the part files on disk tell it."""
+    info = read_json(job / "release.json")
+    if isinstance(info, dict) and isinstance(info.get("release"), int):
+        return info["release"]
+    numbers = [int(m.group(1)) for f in job.glob("partial-*.m4a") if (m := re.fullmatch(r"partial-(\d+)", f.stem))]
+    return max(numbers, default=0)
+
+
 def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: False,
         on_release=lambda info: None, note=lambda msg: None) -> Result:
     """Narrates, aligns each piece as soon as it is spoken, and publishes the finished
@@ -239,7 +252,7 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
     times: dict[int, list] = {}  # piece -> [words, owner, spans, seconds]
     bad: set[int] = set()
     rel_file = job / "release.json"
-    release = json.loads(rel_file.read_text())["release"] if rel_file.exists() else 0
+    release = last_release(job)
 
     def wav_of(i):
         return pdir / f"{i:05d}.wav"
@@ -318,7 +331,7 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
         body["partial"] = {"release": nxt, "toToken": to_token}
         (job / f"partial-{nxt}.json").write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
         release = nxt
-        rel_file.write_text(json.dumps({"release": nxt, "audioSeconds": round(seconds, 1), "toToken": to_token}))
+        write_json(rel_file, {"release": nxt, "audioSeconds": round(seconds, 1), "toToken": to_token})
         for old in job.glob("partial-*.*"):  # keep this part and the one before (it may be downloading)
             try:
                 if int(old.stem.split("-")[1].split(".")[0]) < nxt - 1:
@@ -331,8 +344,9 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
     for p in spoken:
         if wav_of(p["i"]).exists():
             align(p["i"])
-    if rel_file.exists():
-        on_release(json.loads(rel_file.read_text()))
+    announced = read_json(rel_file)
+    if isinstance(announced, dict) and "release" in announced:
+        on_release(announced)
     maybe_release()
 
     for _round in range(2):
