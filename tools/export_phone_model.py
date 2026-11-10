@@ -2,9 +2,10 @@
 
   python tools/export_phone_model.py <hf-model-id> [<out-dir>]   (default out-dir: <home>/onnx)
 
-The app downloads these from the server (Settings > On-phone models):
+The app downloads these (Settings > On-phone models):
   English  facebook/wav2vec2-base-960h
   Italian  jonatasgrosman/wav2vec2-large-xlsr-53-italian
+Other languages: convert any wav2vec2-style CTC model the same way, see docs/phone-models.md.
 
 Writes <name>.int8.onnx (input: float32 audio [1, samples] at 16 kHz,
 normalised; output: logits [1, frames, vocab]) and <name>.vocab.json
