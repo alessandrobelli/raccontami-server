@@ -5,6 +5,8 @@ A job's id is a hash of its inputs: sending the same thing twice returns the exi
 
 ## Health
 
+`GET /v1/hello` (no token) → `{"app": "raccontami", "name", "version"}`. Used by the app's "Search local network" to recognize the server.
+
 `GET /v1/health` → `{"ok", "version", "name", "gpu", "queue", "languages": ["en","it"], "narration": {"it": "<voice label>", ...}}`
 
 ## Jobs (sync and narration)

@@ -3,6 +3,7 @@
   POST /v1/jobs              multipart: audio=<file>, meta=<json {"lang","tokens"}>  -> {"id", "state"}
   GET  /v1/jobs/{id}         -> {"state","stage","progress","etaSeconds","error"}
   GET  /v1/jobs/{id}/result  -> sync JSON (see pipeline.Result.to_json)
+  GET  /v1/hello             -> {"app": "raccontami", "name", "version"}  (no token)
   GET  /v1/health            -> {"ok", "gpu", "queue"}
 
   POST /v1/narrations        JSON {"lang", "tokens", "paragraphs": [first token of each paragraph]}
@@ -265,6 +266,13 @@ async def _lifespan(_app):
 
 
 app = FastAPI(title="Raccontami sync server", version="0.1.0", lifespan=_lifespan)
+
+
+@app.get("/v1/hello")
+def hello():
+    """No token needed: lets the app's "Search local network" recognize this server.
+    Says only that it is a Raccontami server, its name and version."""
+    return {"app": "raccontami", "name": NAME, "version": app.version}
 
 
 @app.get("/v1/health", dependencies=[Depends(auth)])
