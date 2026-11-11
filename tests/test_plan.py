@@ -25,6 +25,14 @@ class PlanStartTest(unittest.TestCase):
         ranges = lambda pieces: [(p["from"], p["to"]) for p in pieces]
         self.assertEqual(ranges(plan_pieces(TOKENS, PARAGRAPHS)), ranges(plan_pieces(TOKENS, PARAGRAPHS, start=5)))
 
+    def test_a_long_paragraph_after_the_start_is_spoken_whole(self):
+        # long enough to be split into several pieces
+        long = ("Once upon a time there was a piece of wood . " * 80).split()
+        tokens = TOKENS[:5] + long
+        pieces = plan_pieces(tokens, [0, 5], start=5)
+        self.assertGreater(len(pieces), 2)
+        self.assertTrue(all(p["say"] for p in pieces[1:]))
+
 
 if __name__ == "__main__":
     unittest.main()

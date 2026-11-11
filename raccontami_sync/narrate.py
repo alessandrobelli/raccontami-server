@@ -122,7 +122,8 @@ def plan_pieces(tokens: list[str], paragraphs: list[int], start: int = 0) -> lis
             add(a, b, PAUSE_PARAGRAPH)
             continue
         # split at sentence ends, then at clause ends, then anywhere
-        cuts, start, size = [], a, 0
+        # (not named "start": add() reads the parameter of that name)
+        cuts, size = [], 0
         for k in range(a, b):
             size += len(tokens[k]) + 1
             if k + 1 == b:
@@ -133,7 +134,7 @@ def plan_pieces(tokens: list[str], paragraphs: list[int], start: int = 0) -> lis
             if size >= MAX_CHARS * 0.5 and _SENTENCE_END.search(tail) or \
                     size >= MAX_CHARS * 0.85 and _CLAUSE_END.search(tail) or size >= MAX_CHARS:
                 cuts.append(k + 1)
-                start, size = k + 1, 0
+                size = 0
         edges = [a] + cuts + [b]
         for x, y in zip(edges, edges[1:]):
             add(x, y, PAUSE_PARAGRAPH if y == b else PAUSE_SPLIT)
