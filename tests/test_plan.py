@@ -1,6 +1,10 @@
 import unittest
 
-from raccontami_sync.narrate import plan_pieces
+try:
+    from raccontami_sync.narrate import plan_pieces
+except ImportError as e:
+    # the narration module loads PyTorch; without it (as in the GitHub check) these tests are skipped
+    raise unittest.SkipTest(f"narration needs the server's Python environment: {e}")
 
 TOKENS = "Digitized by the Archive . CHAPTER I . Once upon a time .".split()
 PARAGRAPHS = [0, 5, 8]
