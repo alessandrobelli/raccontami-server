@@ -133,9 +133,18 @@ class Aligner:
 
 # ---------------------------------------------------------------- stages
 
+MAX_AUDIO_HOURS = 40  # decoded audio is held in memory, about 230 MB an hour
+
+
 def decode(path: Path) -> np.ndarray:
-    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
-                         check=True, capture_output=True).stdout
+    # a small file can claim to be hundreds of hours long: stop ffmpeg just past the limit
+    # and refuse, so one upload cannot use up the memory (and again at every restart)
+    limit = MAX_AUDIO_HOURS * 3600
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-t", str(limit + 60),
+                          "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+                         check=True, capture_output=True, timeout=2 * 3600).stdout
+    if len(raw) >= limit * SR * 4:  # float32 mono
+        raise ValueError(f"the audio is longer than {MAX_AUDIO_HOURS} hours; split the book into parts")
     return np.frombuffer(raw, dtype=np.float32).copy()
 
 

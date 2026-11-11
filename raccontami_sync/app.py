@@ -45,11 +45,13 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
 from . import narrate, pipeline  # noqa: E402
+from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 
 JOBS = DATA / "jobs"
 JOBS.mkdir(parents=True, exist_ok=True)
 LOG = DATA / "server.log"
+DELETED = "deleted"  # empty file in a job folder: the phone deleted this story
 
 
 def log(msg: str) -> None:
@@ -192,6 +194,10 @@ def _recovered_status(d: Path):
 
 def _load_existing():
     for d in JOBS.iterdir():
+        if (d / DELETED).exists():  # deleted on the phone while it was running, and the server stopped first
+            shutil.rmtree(d, ignore_errors=True)
+            log(f"  job {d.name[:8]}: deleted on the phone before the last stop; removed")
+            continue
         st = d / "status.json"
         if not st.exists():
             continue
@@ -289,7 +295,9 @@ async def _lifespan(_app):
     log(f"  voices: " + ", ".join(f"{LANG_NAMES.get(k, k)}: {v.get('label', v['engine'])}"
                                   for k, v in narrate.voices(DATA).items()))
     log(f"  name: {NAME}   (shown in the app; set RACCONTAMI_NAME to change it)")
-    log(f"  token for the app: {TOKEN}   (also in {DATA / 'token.txt'})")
+    # the token goes to the window only, never into server.log: logs get shared when asking for help
+    print(f"          token for the app: {TOKEN}", flush=True)
+    log(f"  token for the app: shown above, and in {DATA / 'token.txt'}")
     log(f"  data: {DATA}")
     waiting = [j for j in jobs.values() if j.state == "queued"]
     if waiting:
@@ -298,6 +306,10 @@ async def _lifespan(_app):
 
 
 app = FastAPI(title="Raccontami sync server", version="0.1.0", lifespan=_lifespan)
+# token and size are checked here, before any of a request's body is read (see gate.py)
+MAX_UPLOAD = 4 * 1024 ** 3  # an audiobook; long ones are around 1 GB
+MAX_BODY = 64 * 1024 ** 2  # everything else, the text of a long book included
+app.add_middleware(Gate, token=TOKEN, open_paths=("/v1/hello",), default_limit=MAX_BODY, limits={"/v1/jobs": MAX_UPLOAD})
 
 
 @app.get("/v1/hello")
@@ -334,6 +346,7 @@ def create_job(audio: UploadFile = File(...), meta: str = Form(...)):
         m = json.loads(meta)
         lang, tokens = m["lang"], m["tokens"]
         assert lang in pipeline.ALIGN_MODELS and isinstance(tokens, list) and tokens
+        assert all(isinstance(t, str) for t in tokens)
     except Exception:
         raise HTTPException(status_code=400, detail="meta must be JSON with lang (en|it) and a non-empty tokens list")
 
@@ -377,11 +390,16 @@ def create_narration(body: dict = Body(...)):
         assert lang in narrate.voices(DATA) and lang in pipeline.ALIGN_MODELS
         assert isinstance(tokens, list) and tokens and all(isinstance(t, str) for t in tokens)
         assert isinstance(paragraphs, list) and all(isinstance(p, int) for p in paragraphs)
+        # the first word to read: what is before it (title page, index) is in the text but not narrated
+        start = body.get("start", 0)
+        assert isinstance(start, int) and not isinstance(start, bool) and 0 <= start < len(tokens)
     except Exception:
-        raise HTTPException(status_code=400, detail="body must be JSON with lang, a non-empty tokens list and paragraphs")
+        raise HTTPException(status_code=400, detail="body must be JSON with lang, a non-empty tokens list, paragraphs and an optional start")
     voice = narrate.voices(DATA)[lang]
     key = {"kind": "narrate", "v": narrate.VERSION, "lang": lang, "tokens": tokens, "paragraphs": paragraphs,
            "voice": {k: v for k, v in voice.items() if k != "python"}}
+    if start:
+        key["start"] = start  # left out for 0, so books sent before this existed keep their job
     job_id = "n" + hashlib.sha256(json.dumps(key, ensure_ascii=False).encode()).hexdigest()[:19]
     j = jobs.get(job_id)
     if j is not None and j.state != "failed":
@@ -389,7 +407,8 @@ def create_narration(body: dict = Body(...)):
     retry = j is not None
     j = JobState(job_id, "narrate")
     j.dir.mkdir(parents=True, exist_ok=True)  # a failed narration keeps its finished pieces
-    (j.dir / "meta.json").write_text(json.dumps({"lang": lang, "tokens": tokens, "paragraphs": paragraphs},
+    (j.dir / DELETED).unlink(missing_ok=True)  # sent again after being deleted: it is wanted again
+    (j.dir / "meta.json").write_text(json.dumps({"lang": lang, "tokens": tokens, "paragraphs": paragraphs, "start": start},
                                                 ensure_ascii=False), encoding="utf-8")
     j.save()
     jobs[job_id] = j
@@ -427,6 +446,13 @@ def delete_job(job_id: str):
     jobs.pop(job_id, None)
     if j.state != "running":  # a running one is removed by its worker once the voice stops
         shutil.rmtree(j.dir, ignore_errors=True)
+    else:
+        # the worker may not get to it before the server stops: this mark makes the next start
+        # finish the deletion instead of narrating a story the phone no longer has
+        try:
+            (j.dir / DELETED).touch()
+        except OSError:
+            pass
     return {"deleted": job_id}
 
 

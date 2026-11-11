@@ -100,15 +100,20 @@ def speakable(tokens: list[str]) -> str:
     return text[0].upper() + text[1:] if text else text
 
 
-def plan_pieces(tokens: list[str], paragraphs: list[int]) -> list[dict]:
-    """Pieces as {"i", "from", "to" (inclusive token range), "say", "pause"}."""
+def plan_pieces(tokens: list[str], paragraphs: list[int], start: int = 0) -> list[dict]:
+    """Pieces as {"i", "from", "to" (inclusive token range), "say", "pause"}.
+
+    The pieces before token [start] (the title page and index of a scan) are kept, so that
+    token numbers stay the same, but they are not spoken and take no time."""
     starts = sorted(set(p for p in paragraphs if 0 <= p < len(tokens)) | {0})
     bounds = list(zip(starts, starts[1:] + [len(tokens)]))
     pieces: list[dict] = []
 
     def add(a: int, b: int, pause: float):
         say = speakable(tokens[a:b])
-        if not any(ch.isalnum() for ch in say):
+        if b <= start:
+            say, pause = "", 0.0
+        elif not any(ch.isalnum() for ch in say):
             say, pause = "", PAUSE_EMPTY
         pieces.append({"i": len(pieces), "from": a, "to": b - 1, "say": say, "pause": pause})
 
@@ -122,8 +127,11 @@ def plan_pieces(tokens: list[str], paragraphs: list[int]) -> list[dict]:
             size += len(tokens[k]) + 1
             if k + 1 == b:
                 break
-            if size >= MAX_CHARS * 0.5 and _SENTENCE_END.search(tokens[k]) or \
-                    size >= MAX_CHARS * 0.85 and _CLAUSE_END.search(tokens[k]) or size >= MAX_CHARS:
+            # only the end of the word matters, and looking at the whole of a very long "word"
+            # (a row of dots sent on purpose) would take hours and stall the server
+            tail = tokens[k][-16:]
+            if size >= MAX_CHARS * 0.5 and _SENTENCE_END.search(tail) or \
+                    size >= MAX_CHARS * 0.85 and _CLAUSE_END.search(tail) or size >= MAX_CHARS:
                 cuts.append(k + 1)
                 start, size = k + 1, 0
         edges = [a] + cuts + [b]
@@ -236,7 +244,7 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
     if plan_file.exists():
         plan = json.loads(plan_file.read_text(encoding="utf-8"))
     else:
-        plan = {"voice": voice, "pieces": plan_pieces(tokens, meta["paragraphs"])}
+        plan = {"voice": voice, "pieces": plan_pieces(tokens, meta["paragraphs"], meta.get("start", 0))}
         plan_file.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
     pieces = plan["pieces"]
     spoken = [p for p in pieces if p["say"]]
