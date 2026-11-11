@@ -73,6 +73,20 @@ use the server's `100.x.y.z` address), or put an HTTPS reverse proxy in front, e
 A 4090-class GPU narrates a 10-hour book in about 3.5–4 hours. Stop the machine afterwards:
 the app has already downloaded the result.
 
+## Your network
+
+The app and the server talk over plain HTTP. Anyone on the same network can read the token
+and the text as they pass, and then use the server with that token. So:
+
+- At home, on a Wi-Fi only you and people you trust use, this is fine.
+- On a shared network (an office, a university, a shared flat), use
+  [Tailscale](https://tailscale.com) on the computer and the phone, and give the app the
+  computer's `100.x.y.z` address: Tailscale encrypts everything between the two.
+- For HTTPS inside your tailnet, without changing the server, run `tailscale serve 8765` on the
+  computer and give the app the `https://<computer>.<tailnet>.ts.net` address it prints. Your
+  tailnet needs HTTPS certificates turned on; Tailscale asks the first time. (Not yet tried
+  with a whole audiobook upload.)
+
 ## Connect the app
 
 The server prints its **token** when it starts (also saved in `<home>/server-data/token.txt`).
