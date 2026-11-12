@@ -15,7 +15,9 @@ jobs continue, a failed narration stays failed until the phone sends it again, a
 from __future__ import annotations
 
 import json
+import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -162,13 +164,60 @@ def _yes_no(ask, question: str, default: bool) -> bool:
             return False
 
 
-def choose(found: list[tuple[Path, dict]], ask=input, say=print) -> dict[str, str]:
+def wait_seconds(env=None) -> float:
+    """How long the question waits for an answer: RACCONTAMI_ASK_SECONDS, 60 when not set, 0 = for ever."""
+    value = (os.environ if env is None else env).get("RACCONTAMI_ASK_SECONDS", "60").strip()
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        return 60.0
+
+
+def patient(ask, seconds: float):
+    """An ask() that gives up after [seconds] without an answer, as if the answers had ended
+    (EOFError): a server started with nobody at the keyboard, at login or after a power cut, then
+    goes on by itself. Once it has given up it does not ask again: the first question is still
+    waiting for a key that may come later, and must not be taken as the answer to another one."""
+    if not seconds:
+        return ask
+    gave_up = threading.Event()
+
+    def asking(question: str) -> str:
+        if gave_up.is_set():
+            raise EOFError
+        box: list = []
+
+        def read():
+            try:
+                box.append(ask(question))
+            except BaseException as e:  # noqa: BLE001  handed to the one who waits
+                box.append(e)
+
+        threading.Thread(target=read, daemon=True).start()
+        waited = 0.0
+        while not box and waited < seconds:
+            time.sleep(0.1)
+            waited += 0.1
+        if not box:
+            gave_up.set()
+            raise EOFError
+        if isinstance(box[0], BaseException):
+            raise box[0]
+        return box[0]
+
+    return asking
+
+
+def choose(found: list[tuple[Path, dict]], ask=input, say=print, seconds: float = 0) -> dict[str, str]:
     """Asks about each unfinished job and returns job folder name -> CONTINUE, HOLD or DELETE.
-    When the answers end (the window has no keyboard after all), the rest gets what it got before the
-    question existed, and nothing is deleted."""
+    When the answers end (the window has no keyboard after all, or nobody answered within
+    [seconds]), the rest gets what it got before the question existed, and nothing is deleted."""
     choices: dict[str, str] = {}
+    ask = patient(ask, seconds)
     say("")
-    say(f"  Unfinished work was found: {len(found)} job(s).")
+    say(f"  Unfinished work was found: {len(found)} job(s)."
+        + (f" Without an answer within {int(seconds)} s, the server goes on by itself: work that was running "
+           "continues, and nothing is deleted." if seconds else ""))
     for job, status in found:
         say("")
         for line in describe(job, status):

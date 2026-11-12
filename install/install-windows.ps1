@@ -95,16 +95,31 @@ pause > nul
 "@ | Set-Content -Encoding ascii $start
 Write-Host $start
 
+# the same server without a window: it lives next to the clock (see raccontami_sync/background.py)
+$hidden = "$H\Raccontami server (no window).lnk"
+$link = (New-Object -ComObject WScript.Shell).CreateShortcut($hidden)
+$link.TargetPath = (Join-Path (Split-Path $serverPy) "pythonw.exe")
+$link.Arguments = "-m raccontami_sync.background --home `"$H`""
+$link.WorkingDirectory = "$Repo"
+$link.Description = "Starts the Raccontami server without a window; its icon next to the clock stops it"
+$link.Save()
+Write-Host $hidden
+
 Remove-Item -Recurse -Force "$H\pip-cache" -ErrorAction SilentlyContinue
 
 Step "Done"
 Write-Host @"
 Start the server:   double-click $start
                     (its window shows the token to type into the app)
+Without a window:   double-click $hidden
+                    (it lives next to the clock: the icon there opens its page, puts work on hold and
+                    stops it; the token is in $H\server-data\token.txt)
 
 Let phones on your network reach it (run once, as administrator):
   New-NetFirewallRule -DisplayName "Raccontami 8765" -Direction Inbound -Protocol TCP -LocalPort 8765 -RemoteAddress LocalSubnet -Action Allow
 
 Start it at login (so narrations resume after a restart):
-  Win+R -> shell:startup -> New > Shortcut -> $start -> Properties: Run minimized
+  Win+R -> shell:startup -> copy "$hidden" there
+  (started this way it does not take the graphics card by itself: unfinished work waits on hold
+  until you continue it from the icon or the page)
 "@

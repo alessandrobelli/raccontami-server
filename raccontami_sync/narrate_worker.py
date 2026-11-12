@@ -113,7 +113,8 @@ def main(job: Path) -> None:
     out = job / "pieces"
     out.mkdir(exist_ok=True)
     todo = [p for p in plan["pieces"] if p.get("say") and not (out / f"{p['i']:05d}.wav").exists()]
-    print(f"todo {len(todo)} of {len(plan['pieces'])}", flush=True)
+    # counted over the pieces that are spoken: the silent ones (a narrator's mark) are never made
+    print(f"todo {len(todo)} of {sum(1 for p in plan['pieces'] if p.get('say'))}", flush=True)
     if not todo:
         return
     cfg = plan["voice"]

@@ -56,13 +56,31 @@ def image(kind: str):
 
 
 class Tray:
-    def __init__(self, name: str, port: int, summary, can, hold_all, continue_all, quit_server, log):
+    def __init__(self, name: str, port: int, summary, can, hold_all, continue_all, quit_server, log, folder=None):
         self.url = f"http://localhost:{port}/"
         self.name, self.summary, self.can = name, summary, can
         self.hold_all, self.continue_all, self.quit_server, self.log = hold_all, continue_all, quit_server, log
+        self.folder = folder  # where the token and the log are: the only way to them without a window
         self.done = threading.Event()
         self.icon = None
         self.kind = None
+        self.to_say = None  # a message waiting for the icon to be there
+
+    def announce(self, message: str) -> None:
+        """A notification from the icon, now or as soon as it is shown."""
+        self.to_say = message
+        self._say()
+
+    def _say(self):
+        icon, message = self.icon, self.to_say
+        if icon is None or not message or not icon.visible:
+            return
+        self.to_say = None
+        try:
+            if icon.HAS_NOTIFICATION:
+                icon.notify(message, "Raccontami server")
+        except Exception as e:  # noqa: BLE001  the menu and the page say the same
+            self.log(f"  icon: could not show a notification ({type(e).__name__}: {e})")
 
     def _menu(self):
         import pystray
@@ -83,6 +101,8 @@ class Tray:
             Item("Put everything on hold", act(self.hold_all), enabled=lambda item: self.can()["hold"]),
             Item("Continue what is on hold", act(self.continue_all), enabled=lambda item: self.can()["continue"]),
             pystray.Menu.SEPARATOR,
+            Item("Open the server's folder (token, log)", lambda icon, item: os.startfile(self.folder),  # noqa: S606
+                 visible=self.folder is not None),
             Item("Stop the server", lambda icon, item: self.quit_server()),
         )
 
@@ -104,6 +124,7 @@ class Tray:
 
             def keep_current(icon):
                 icon.visible = True
+                self._say()
                 while not self.done.wait(3):
                     try:
                         self._refresh()
@@ -127,7 +148,8 @@ class Tray:
             pass
 
 
-def start(name: str, summary, can, hold_all, continue_all, quit_server, log, port: int | None = None) -> Tray | None:
+def start(name: str, summary, can, hold_all, continue_all, quit_server, log, port: int | None = None,
+          folder=None) -> Tray | None:
     """Shows the icon, or says in one line why not. Never raises: the server starts either way.
 
     summary()      -> (kind, text): kind is "working", "hold" or "idle"; text is one short line
@@ -146,7 +168,8 @@ def start(name: str, summary, can, hold_all, continue_all, quit_server, log, por
     if reason:
         log(f"  icon next to the clock: none, {reason}")
         return None
-    tray = Tray(name, own_port() if port is None else port, summary, can, hold_all, continue_all, quit_server, log)
+    tray = Tray(name, own_port() if port is None else port, summary, can, hold_all, continue_all, quit_server, log,
+                folder=folder)
     tray.start()
     log("  icon next to the clock: yes (Windows may keep it behind the small arrow there). It opens the page, "
         "puts the work on hold and stops the server")

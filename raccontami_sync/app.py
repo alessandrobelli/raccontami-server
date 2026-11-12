@@ -45,7 +45,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import narrate, pipeline, tray, unfinished  # noqa: E402
+from . import narrate, pipeline, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 
@@ -189,6 +189,8 @@ jobs: dict[str, JobState] = {}
 work: "queue.Queue[str]" = queue.Queue()
 narrations: "queue.Queue[str]" = queue.Queue()
 stopping = threading.Event()  # the server is ending on purpose (its icon, Ctrl+C): see _narration_worker
+HIDDEN = os.environ.get("RACCONTAMI_WINDOWLESS") == "1"  # started without a window (background.py)
+_lock = None  # kept open while the server runs: one server per data folder (single.py)
 
 
 def _recovered_status(d: Path):
@@ -224,7 +226,14 @@ def _load_existing():
 
     # unfinished work: with somebody at the keyboard, asked about one by one (see unfinished.py)
     found = [(d, s) for d, s in loaded if unfinished.is_unfinished(d, s)]
-    asked = unfinished.choose(found) if found and unfinished.interactive() else {}
+    asked = {}
+    # a hidden console still looks like a keyboard: a question there would wait where nobody can see it
+    if found and not HIDDEN and unfinished.interactive():
+        asked = unfinished.choose(found, seconds=unfinished.wait_seconds())
+    elif HIDDEN and tray.why_not() is None:
+        # started without a window: there is nowhere to ask, and taking the GPU unasked at login is
+        # the opposite of asking. What was waiting or running is kept on hold, and the icon says so.
+        asked = {d.name: unfinished.HOLD for d, s in found if s["state"] in ("queued", "running")}
     for d, s in loaded:
         choice = unfinished.LEAVE
         if unfinished.is_unfinished(d, s):
@@ -344,6 +353,12 @@ def _narration_worker():
 
 @asynccontextmanager
 async def _lifespan(_app):
+    global _lock
+    _lock = single.take(DATA)  # before anything looks at the jobs: see single.py
+    if _lock is None:
+        log(f"NOT STARTED: a Raccontami server is already running on {DATA}. Use that one (its icon next to the "
+            "clock, or its page); stop it first to start another")
+        raise RuntimeError("a Raccontami server is already running on this data folder")
     _load_existing()
     threading.Thread(target=_worker, daemon=True).start()
     threading.Thread(target=_narration_worker, daemon=True).start()
@@ -356,9 +371,12 @@ async def _lifespan(_app):
                                   for k, v in narrate.voices(DATA).items()))
     log(f"  sync: Whisper {pipeline.WHISPER_MODEL}" + ("; one job at a time on the GPU" if ONE_JOB else ""))
     log(f"  name: {NAME}   (shown in the app; set RACCONTAMI_NAME to change it)")
-    # the token goes to the window only, never into server.log: logs get shared when asking for help
-    print(f"          token for the app: {TOKEN}", flush=True)
-    log(f"  token for the app: shown above, and in {DATA / 'token.txt'}")
+    # the token goes to the window only, never into a log: logs get shared when asking for help
+    if HIDDEN:  # no window: what is printed ends in a file
+        log(f"  token for the app: in {DATA / 'token.txt'} (the icon's menu opens that folder)")
+    else:
+        print(f"          token for the app: {TOKEN}", flush=True)
+        log(f"  token for the app: shown above, and in {DATA / 'token.txt'}")
     log(f"  data: {DATA}")
     waiting = [j for j in jobs.values() if j.state == "queued"]
     if waiting:
@@ -369,7 +387,9 @@ async def _lifespan(_app):
             + ". Continue them from the server's page, or start the server in a window to be asked again")
     log(f"  page: this server's address in a browser (on this computer: http://localhost:{tray.own_port()}/) "
         "shows the work, and can put it on hold or continue it")
-    icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log)
+    icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA)
+    if icon is not None and HIDDEN and held:
+        icon.announce(f"{len(held)} unfinished job(s) kept on hold. Continue from this icon's menu, or open the page.")
     yield
     stopping.set()  # also on Ctrl+C: a narration that is still being stopped is not written down as failed
     if icon is not None:
@@ -675,6 +695,18 @@ def continue_job(job_id: str):
     if refusal:
         raise HTTPException(status_code=409, detail=refusal)
     return j.view()
+
+
+@app.post("/v1/hold", dependencies=[Depends(auth)])
+def hold_all():
+    """Puts everything that can be on hold: what waits first, then what runs (see hold_everything)."""
+    return {"message": hold_everything()}
+
+
+@app.post("/v1/continue", dependencies=[Depends(auth)])
+def continue_all():
+    """Continues everything that is on hold."""
+    return {"message": continue_everything()}
 
 
 @app.get("/v1/jobs", dependencies=[Depends(auth)])
