@@ -61,24 +61,71 @@ def can_continue(job: Path, status: dict) -> bool:
     return status.get("state") not in ("queued", "running") and is_unfinished(job, status)
 
 
-def about(job: Path, kind: str) -> str:
-    """One line that lets the reader recognise the job: the server knows no titles, so a narration
-    is told by its language, its length and its first words. Reads the whole text of the book:
-    work it out once per job, not at every look."""
+LABEL = "label.json"  # what the phone calls the story and which device sent it: for people, never for the work
+
+
+def write_label(job: Path, title, device) -> None:
+    """Keeps the story's name and the sending device beside the job. Both are optional and come from
+    the phone: kept short, and only as text."""
+    label = {k: v.strip()[:200] for k, v in (("title", title), ("device", device)) if isinstance(v, str) and v.strip()}
+    if not label:
+        return
     try:
-        meta = json.loads((job / "meta.json").read_text(encoding="utf-8"))
+        (job / LABEL).write_text(json.dumps(label, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass  # a name for the page is not worth failing a job for
+
+
+def _read(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        meta = {}
-    if not isinstance(meta, dict):
-        meta = {}
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def facts(job: Path, kind: str) -> dict:
+    """What stays true of a job for as long as it exists: its name (when the phone sent one), its
+    language and length, who narrates. Reads the whole text of the book: work it out once per job,
+    not at every look."""
+    meta, label = _read(job / "meta.json"), _read(job / LABEL)
     tokens = meta.get("tokens") if isinstance(meta.get("tokens"), list) else []
-    lang = {"en": "English", "it": "Italian"}.get(meta.get("lang"), meta.get("lang") or "unknown language")
+    out = {"title": label.get("title") if isinstance(label.get("title"), str) else None,
+           "device": label.get("device") if isinstance(label.get("device"), str) else None,
+           "language": {"en": "English", "it": "Italian"}.get(meta.get("lang"), meta.get("lang") or "unknown language"),
+           "words": len(tokens)}
+    try:
+        out["sent"] = int((job / "meta.json").stat().st_mtime)
+    except OSError:
+        out["sent"] = None
+    if kind == "narrate":
+        start = meta.get("start") if isinstance(meta.get("start"), int) else 0
+        out["beginning"] = " ".join(str(t) for t in tokens[start:start + 8])
+        out["audioSecondsAbout"] = int(len(tokens) / 2.5)
+        cast = meta.get("cast") if isinstance(meta.get("cast"), dict) else {}
+        names = {p[1] for p in meta.get("narrators") or [] if isinstance(p, list) and len(p) == 2}
+        out["narrators"] = len(names)
+        # narrators without a voice of their own share the language's usual one
+        out["voices"] = len(set(cast.values())) + (1 if names - set(cast) else 0) if names else 1
+    return out
+
+
+def about(job: Path, kind: str, known: dict | None = None) -> str:
+    """One line that lets the reader recognise the job: by its name when the phone sent one, and
+    always by its language, its length and, for a narration, its first words."""
+    f = known or facts(job, kind)
+    name = f'"{f["title"]}": ' if f.get("title") else ""
     if kind != "narrate":
-        return f"A sync of an audiobook with its text, {lang}, {len(tokens):,} words"
-    start = meta.get("start") if isinstance(meta.get("start"), int) else 0
-    first = " ".join(str(t) for t in tokens[start:start + 8])
-    return (f"A narration, {lang}, {len(tokens):,} words (about {_hm(len(tokens) / 2.5)} of audio)"
-            + (f', beginning "{first} ..."' if first else ""))
+        return f"{name}{'a' if name else 'A'} sync of an audiobook with its text, {f['language']}, {f['words']:,} words"
+    return (f"{name}{'a' if name else 'A'} narration, {f['language']}, {f['words']:,} words "
+            f"(about {_hm(f['audioSecondsAbout'])} of audio)"
+            + (f', beginning "{f["beginning"]} ..."' if f.get("beginning") else ""))
+
+
+def pieces_total(job: Path) -> int | None:
+    """How many pieces of audio the narration is cut into, once it has been planned."""
+    pieces = _read(job / "plan.json").get("pieces")
+    return sum(1 for p in pieces if isinstance(p, dict) and p.get("say")) if isinstance(pieces, list) else None
 
 
 def describe(job: Path, status: dict) -> list[str]:

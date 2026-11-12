@@ -23,6 +23,12 @@ within seconds and keeps every finished piece: that is the way to leave the grap
 something else for a while without stopping the server. A sync that is running cannot be put on
 hold; it ends by itself, usually within minutes.
 
+On Windows the server also puts an icon next to the clock (Windows may keep it behind the small
+arrow there). Its colour says whether the server is working, on hold or idle; a click opens the
+page; its menu puts everything on hold, continues it, or stops the server. Stopping it from there
+leaves a narration in progress to be asked about at the next start, instead of marked as failed.
+`RACCONTAMI_TRAY=0` switches the icon off; without it the server works the same.
+
 While a long book is narrated, the finished
 beginning is published in growing parts (a quarter of the book or 10 minutes, then doubling),
 so listening can start within minutes.

@@ -30,7 +30,14 @@ the state can show it as waiting.
 `GET /` → the page (no token: it holds no secret, and asks for the token itself).
 
 `GET /v1/jobs` → every job, as above, plus `about` (what it is, in words), `holding` (a hold was
-asked for and the voice is stopping) and `can`: `{"hold": bool, "continue": bool, "delete": bool}`.
+asked for and the voice is stopping), `can`: `{"hold": bool, "continue": bool, "delete": bool}`, and
+`details`: `title` and `device` (when the phone sent them), `language`, `words`, `sent` and
+`lastWorked` (seconds since 1970) and, for narrations, `beginning`, `audioSecondsAbout`,
+`narrators`, `voices`, `piecesDone`, `piecesTotal` and `audioReadySeconds`.
+
+Both `POST /v1/jobs` (in `meta`) and `POST /v1/narrations` take two optional texts, `title` and
+`device`: what the story is called and which device sent it. They are shown on the page and in the
+question at the start; they are not part of what the job is, so the same book keeps its job.
 
 `POST /v1/jobs/{id}/hold` → stops working on the job and keeps what it made. A waiting job, or a
 narration that is running; a running sync answers 409. The answer may still say `running` for a

@@ -9,6 +9,9 @@ fastapi
 uvicorn
 python-multipart
 wordfreq
+# the icon next to the clock (raccontami_sync/tray.py): Windows only, and the server runs without them
+pystray; sys_platform == "win32"
+Pillow; sys_platform == "win32"
 # tools/export_phone_model.py (models for syncing on the phone)
 onnx
 onnxscript

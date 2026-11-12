@@ -106,6 +106,49 @@ class UnfinishedTest(unittest.TestCase):
         (d / "meta.json").write_text("{broken", encoding="utf-8")
         self.assertIn("A narration", u.describe(d, s)[0])
 
+    # the story's name and who tells it
+
+    def test_a_job_with_a_name_is_told_by_it(self):
+        d, _ = self.job("n1", state="running", kind="narrate")
+        u.write_label(d, "La Divina Commedia", "SM-S931B")
+        self.assertTrue(u.about(d, "narrate").startswith('"La Divina Commedia": a narration, Italian'))
+
+    def test_the_device_that_sent_it_is_kept(self):
+        d, _ = self.job("n1", state="running", kind="narrate")
+        u.write_label(d, "x", "SM-S931B")
+        self.assertEqual("SM-S931B", u.facts(d, "narrate")["device"])
+
+    def test_a_name_that_is_not_text_is_not_kept(self):
+        d, _ = self.job("n1", state="running", kind="narrate")
+        u.write_label(d, {"a": 1}, None)
+        self.assertIsNone(u.facts(d, "narrate")["title"])
+
+    def test_a_very_long_name_is_cut(self):
+        d, _ = self.job("n1", state="running", kind="narrate")
+        u.write_label(d, "x" * 5000, None)
+        self.assertEqual(200, len(u.facts(d, "narrate")["title"]))
+
+    def test_without_narrators_there_is_one_voice(self):
+        d, _ = self.job("n1", state="running", kind="narrate")
+        self.assertEqual((0, 1), (u.facts(d, "narrate")["narrators"], u.facts(d, "narrate")["voices"]))
+
+    def test_narrators_without_a_voice_of_their_own_share_one(self):
+        d, _ = self.job("n1", state="running", kind="narrate")
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        meta.update(narrators=[[0, "Anna"], [1, "Marco"], [2, "Nilo"]], cast={"Anna": "seta"})
+        (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        self.assertEqual((3, 2), (u.facts(d, "narrate")["narrators"], u.facts(d, "narrate")["voices"]))
+
+    def test_the_pieces_planned_are_the_ones_that_are_spoken(self):
+        d, _ = self.job("n1", state="running", kind="narrate")
+        (d / "plan.json").write_text(json.dumps({"pieces": [{"i": 0, "say": "a"}, {"i": 1, "say": ""}, {"i": 2, "say": "b"}]}),
+                                     encoding="utf-8")
+        self.assertEqual(2, u.pieces_total(d))
+
+    def test_before_it_is_planned_the_number_of_pieces_is_not_known(self):
+        d, _ = self.job("n1", state="queued", kind="narrate")
+        self.assertIsNone(u.pieces_total(d))
+
     # what the server's page may continue
 
     def test_a_job_on_hold_can_be_continued(self):
