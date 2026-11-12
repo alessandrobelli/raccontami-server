@@ -15,7 +15,8 @@
   DELETE /v1/jobs/{id}       -> stops a narration and deletes its pieces (the story was deleted on the phone)
 
 Narrations run on their own queue, so a book narrated overnight does not hold up
-audiobook syncs. They resume after a restart from the last finished piece.
+audiobook syncs (unless RACCONTAMI_ONE_JOB=1: then they take turns, for small GPUs).
+They resume after a restart from the last finished piece.
 
 Every request needs "Authorization: Bearer <token>". The token is read from
 RACCONTAMI_TOKEN or from <data>/token.txt, created on first start.
@@ -175,7 +176,10 @@ class JobState:
                 "etaSeconds": self.eta(), "error": self.error, "partial": self.partial}
 
 
-models = pipeline.Models(MODELS_DIR)
+# one job at a time on the GPU: a narration voice and Whisper together need ~12 GB
+ONE_JOB = os.environ.get("RACCONTAMI_ONE_JOB") == "1"
+pipeline.check_whisper_model(pipeline.WHISPER_MODEL)
+models = pipeline.Models(MODELS_DIR, one_job=ONE_JOB)
 jobs: dict[str, JobState] = {}
 work: "queue.Queue[str]" = queue.Queue()
 narrations: "queue.Queue[str]" = queue.Queue()
@@ -230,23 +234,26 @@ def _worker():
                 log("idle for 10 min: models unloaded from the GPU")
             continue
         j = jobs[job_id]
-        j.begin()
-        log(f"{j.label()}: started")
-        try:
-            meta = json.loads((j.dir / "meta.json").read_text(encoding="utf-8"))
-            audio = next(j.dir.glob("audio.*"))
-            res = pipeline.run(models, audio, meta["tokens"], meta["lang"],
-                               progress=lambda s, f: j.set_progress(s, f),
-                               transcript_cache=j.dir / "transcript.json")
-            (j.dir / "result.json").write_text(json.dumps(res.to_json(), ensure_ascii=False), encoding="utf-8")
-            j.state, j.stage, j.progress = "done", "done", 1.0
-            log(f"{j.label()}: done in {hm(time.monotonic() - j.started)} "
-                f"({res.stats.get('matchedPct')} % of the words found in the audio)")
-        except Exception as e:  # noqa: BLE001
-            traceback.print_exc()
-            j.state, j.error = "failed", f"{type(e).__name__}: {e}"
-            log(f"{j.label()}: FAILED: {j.error}")
-        j.save()
+        if ONE_JOB and models.turn.locked():
+            log(f"{j.label()}: waits for the narration to finish (RACCONTAMI_ONE_JOB)")
+        with models.turn:  # taken before begin(), so a job that waits still shows as queued
+            j.begin()
+            log(f"{j.label()}: started")
+            try:
+                meta = json.loads((j.dir / "meta.json").read_text(encoding="utf-8"))
+                audio = next(j.dir.glob("audio.*"))
+                res = pipeline.run(models, audio, meta["tokens"], meta["lang"],
+                                   progress=lambda s, f: j.set_progress(s, f),
+                                   transcript_cache=j.dir / "transcript.json")
+                (j.dir / "result.json").write_text(json.dumps(res.to_json(), ensure_ascii=False), encoding="utf-8")
+                j.state, j.stage, j.progress = "done", "done", 1.0
+                log(f"{j.label()}: done in {hm(time.monotonic() - j.started)} "
+                    f"({res.stats.get('matchedPct')} % of the words found in the audio)")
+            except Exception as e:  # noqa: BLE001
+                traceback.print_exc()
+                j.state, j.error = "failed", f"{type(e).__name__}: {e}"
+                log(f"{j.label()}: FAILED: {j.error}")
+            j.save()
 
 
 def _narration_worker():
@@ -254,32 +261,39 @@ def _narration_worker():
         j = jobs.get(narrations.get())
         if j is None or j.cancelled:
             continue
-        j.begin()
-        log(f"{j.label()}: started (preparing the voice can take a few minutes the first time)")
-
-        def on_release(info, j=j):
-            j.partial = info
-            log(f"{j.label()}: part {info['release']} ready for the phone, {hm(info['audioSeconds'])} of audio")
-
-        try:
-            res = narrate.run(models, j.dir, DATA, progress=lambda s, f: j.set_progress(s, f),
-                              stop=lambda: j.cancelled, on_release=on_release,
-                              note=lambda msg, j=j: log(f"{j.label()}: {msg}"))
-            if j.cancelled:
-                raise InterruptedError("cancelled")
-            (j.dir / "result.json").write_text(json.dumps(res.to_json(), ensure_ascii=False), encoding="utf-8")
-            j.state, j.stage, j.progress, j.partial = "done", "done", 1.0, None
-            log(f"{j.label()}: done, {hm(res.duration)} of audio in {hm(time.monotonic() - j.started)}"
-                + (f" ({res.stats['respoken']} pieces read again)" if res.stats.get("respoken") else ""))
-        except Exception as e:  # noqa: BLE001
-            if j.cancelled:
-                shutil.rmtree(j.dir, ignore_errors=True)
-                log(f"{j.label()}: stopped and deleted (the story was deleted on the phone)")
+        if ONE_JOB and models.turn.locked():
+            log(f"{j.label()}: waits for the sync to finish (RACCONTAMI_ONE_JOB)")
+        with models.turn:  # taken before begin(), so a narration that waits still shows as queued
+            if j.cancelled:  # deleted on the phone while it waited for its turn
                 continue
-            traceback.print_exc()
-            j.state, j.error = "failed", f"{type(e).__name__}: {e}"
-            log(f"{j.label()}: FAILED: {j.error}")
-        j.save()
+            if ONE_JOB and models.unload_whisper():
+                log("Whisper unloaded from the GPU to make room for the voice (RACCONTAMI_ONE_JOB)")
+            j.begin()
+            log(f"{j.label()}: started (preparing the voice can take a few minutes the first time)")
+
+            def on_release(info, j=j):
+                j.partial = info
+                log(f"{j.label()}: part {info['release']} ready for the phone, {hm(info['audioSeconds'])} of audio")
+
+            try:
+                res = narrate.run(models, j.dir, DATA, progress=lambda s, f: j.set_progress(s, f),
+                                  stop=lambda: j.cancelled, on_release=on_release,
+                                  note=lambda msg, j=j: log(f"{j.label()}: {msg}"))
+                if j.cancelled:
+                    raise InterruptedError("cancelled")
+                (j.dir / "result.json").write_text(json.dumps(res.to_json(), ensure_ascii=False), encoding="utf-8")
+                j.state, j.stage, j.progress, j.partial = "done", "done", 1.0, None
+                log(f"{j.label()}: done, {hm(res.duration)} of audio in {hm(time.monotonic() - j.started)}"
+                    + (f" ({res.stats['respoken']} pieces read again)" if res.stats.get("respoken") else ""))
+            except Exception as e:  # noqa: BLE001
+                if j.cancelled:
+                    shutil.rmtree(j.dir, ignore_errors=True)
+                    log(f"{j.label()}: stopped and deleted (the story was deleted on the phone)")
+                    continue
+                traceback.print_exc()
+                j.state, j.error = "failed", f"{type(e).__name__}: {e}"
+                log(f"{j.label()}: FAILED: {j.error}")
+            j.save()
 
 
 @asynccontextmanager
@@ -294,6 +308,7 @@ async def _lifespan(_app):
     log(f"  GPU: {gpu}")
     log(f"  voices: " + ", ".join(f"{LANG_NAMES.get(k, k)}: {v.get('label', v['engine'])}"
                                   for k, v in narrate.voices(DATA).items()))
+    log(f"  sync: Whisper {pipeline.WHISPER_MODEL}" + ("; one job at a time on the GPU" if ONE_JOB else ""))
     log(f"  name: {NAME}   (shown in the app; set RACCONTAMI_NAME to change it)")
     # the token goes to the window only, never into server.log: logs get shared when asking for help
     print(f"          token for the app: {TOKEN}", flush=True)
@@ -326,7 +341,11 @@ def health():
     return {"ok": True, "version": app.version, "name": NAME,
             "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
             "queue": work.qsize(), "languages": sorted(pipeline.ALIGN_MODELS),
-            "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()}}
+            "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()},
+            # the voices a narrator can be given, per language (none: one voice only)
+            "voices": {lang: [{"id": k, "label": v["label"], "gender": v["gender"]}
+                              for k, v in narrate.voice_library(DATA, lang).items()]
+                       for lang in narrate.voices(DATA) if narrate.voice_library(DATA, lang)}}
 
 
 def _outdated(j: JobState) -> bool:
@@ -393,13 +412,34 @@ def create_narration(body: dict = Body(...)):
         # the first word to read: what is before it (title page, index) is in the text but not narrated
         start = body.get("start", 0)
         assert isinstance(start, int) and not isinstance(start, bool) and 0 <= start < len(tokens)
+        # words that are in the text but never spoken: the symbols that mark who narrates
+        silent = body.get("silent", [])
+        assert isinstance(silent, list) and all(isinstance(k, int) and not isinstance(k, bool) and 0 <= k < len(tokens) for k in silent)
+        silent = sorted(set(silent))
+        # who narrates from which word on, and the voice of each: see narrate.plan_pieces
+        narrators = body.get("narrators", [])
+        assert isinstance(narrators, list) and len(narrators) <= 50_000
+        assert all(isinstance(p, list) and len(p) == 2 and isinstance(p[0], int) and not isinstance(p[0], bool)
+                   and 0 <= p[0] < len(tokens) and isinstance(p[1], str) and len(p[1]) <= 60 for p in narrators)
+        assert all(a[0] < b[0] for a, b in zip(narrators, narrators[1:]))
+        cast = body.get("cast", {})
+        assert isinstance(cast, dict) and len(cast) <= 200
+        assert all(isinstance(k, str) and isinstance(v, str) and 0 < len(v) <= 60 for k, v in cast.items())
+        cast = dict(sorted(cast.items()))
+        if not cast or not narrators:  # one voice for everything
+            narrators, cast = [], {}
     except Exception:
-        raise HTTPException(status_code=400, detail="body must be JSON with lang, a non-empty tokens list, paragraphs and an optional start")
+        raise HTTPException(status_code=400, detail="body must be JSON with lang, a non-empty tokens list, paragraphs, "
+                                                    "and optional start, silent, narrators and cast")
     voice = narrate.voices(DATA)[lang]
     key = {"kind": "narrate", "v": narrate.VERSION, "lang": lang, "tokens": tokens, "paragraphs": paragraphs,
            "voice": {k: v for k, v in voice.items() if k != "python"}}
     if start:
         key["start"] = start  # left out for 0, so books sent before this existed keep their job
+    if silent:
+        key["silent"] = silent
+    if cast:
+        key["narrators"], key["cast"] = narrators, cast
     job_id = "n" + hashlib.sha256(json.dumps(key, ensure_ascii=False).encode()).hexdigest()[:19]
     j = jobs.get(job_id)
     if j is not None and j.state != "failed":
@@ -408,7 +448,8 @@ def create_narration(body: dict = Body(...)):
     j = JobState(job_id, "narrate")
     j.dir.mkdir(parents=True, exist_ok=True)  # a failed narration keeps its finished pieces
     (j.dir / DELETED).unlink(missing_ok=True)  # sent again after being deleted: it is wanted again
-    (j.dir / "meta.json").write_text(json.dumps({"lang": lang, "tokens": tokens, "paragraphs": paragraphs, "start": start},
+    (j.dir / "meta.json").write_text(json.dumps({"lang": lang, "tokens": tokens, "paragraphs": paragraphs, "start": start, "silent": silent,
+                                                 "narrators": narrators, "cast": cast},
                                                 ensure_ascii=False), encoding="utf-8")
     j.save()
     jobs[job_id] = j

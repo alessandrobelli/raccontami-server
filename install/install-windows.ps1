@@ -85,6 +85,8 @@ set RACCONTAMI_HOME=$H
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
 rem set RACCONTAMI_NAME=My PC
+rem GPU under 12 GB: run syncs and narrations one at a time
+rem set RACCONTAMI_ONE_JOB=1
 cd /d "$Repo"
 "$serverPy" -m uvicorn raccontami_sync.app:app --host 0.0.0.0 --port 8765 --no-access-log --log-level warning
 echo.
