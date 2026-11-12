@@ -45,7 +45,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import narrate, pipeline  # noqa: E402
+from . import narrate, pipeline, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 
@@ -197,6 +197,7 @@ def _recovered_status(d: Path):
 
 
 def _load_existing():
+    loaded = []
     for d in JOBS.iterdir():
         if (d / DELETED).exists():  # deleted on the phone while it was running, and the server stopped first
             shutil.rmtree(d, ignore_errors=True)
@@ -212,16 +213,34 @@ def _load_existing():
                 log(f"  job {d.name[:8]} skipped: its status file cannot be read and it has nothing to resume from")
                 continue
             log(f"  job {d.name[:8]}: its status file was damaged (a power cut?); taken as {s['state']}")
-        j = JobState(d.name, s.get("kind", "sync"))
+        s.setdefault("kind", "sync")
+        loaded.append((d, s))
+
+    # unfinished work: with somebody at the keyboard, asked about one by one (see unfinished.py)
+    found = [(d, s) for d, s in loaded if unfinished.is_unfinished(d, s)]
+    asked = unfinished.choose(found) if found and unfinished.interactive() else {}
+    for d, s in loaded:
+        choice = unfinished.LEAVE
+        if unfinished.is_unfinished(d, s):
+            choice = asked.get(d.name) or unfinished.default_choice(s)
+        if choice == unfinished.DELETE:
+            shutil.rmtree(d, ignore_errors=True)
+            log(f"  job {d.name[:8]}: unfinished; deleted as answered at the start")
+            continue
+        j = JobState(d.name, s["kind"])
         if s["state"] != "done":
             j.partial = read_json(d / "release.json")  # None when there is no part yet, or the file is damaged
         j.state, j.stage = s["state"], s.get("stage", s["state"])
         j.progress, j.error = float(s.get("progress") or 0.0), s.get("error")
-        if j.state in ("queued", "running"):  # interrupted by a restart: run again (narrations keep their pieces)
-            j.state, j.stage = "queued", "queued"
+        if choice == unfinished.CONTINUE:  # run again (narrations keep their pieces)
+            j.state, j.stage, j.error = "queued", "queued", None
             if j.kind == "sync":
                 j.progress = 0.0
+            j.save()
             (narrations if j.kind == "narrate" else work).put(j.id)
+        elif choice == unfinished.HOLD:
+            j.state, j.stage, j.error = unfinished.HELD, unfinished.HELD, None
+            j.save()
         jobs[j.id] = j
 
 
@@ -317,6 +336,10 @@ async def _lifespan(_app):
     waiting = [j for j in jobs.values() if j.state == "queued"]
     if waiting:
         log(f"  resuming {len(waiting)} unfinished job(s): " + ", ".join(j.label() for j in waiting))
+    held = [j for j in jobs.values() if j.state == unfinished.HELD]
+    if held:
+        log(f"  on hold, not worked on: " + ", ".join(j.label() for j in held)
+            + ". Start the server in a window to be asked about them again")
     yield
 
 

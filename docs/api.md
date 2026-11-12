@@ -20,6 +20,10 @@ A job's id is a hash of its inputs: sending the same thing twice returns the exi
 ```
 `partial` (narrations only): the latest part of the book that can already be downloaded.
 
+`state` can also be `held` (with `stage` `held`): an unfinished job that the person at the server
+chose to keep without continuing it. Nothing works on it until the server is started again and
+the question about it is answered. Apps that do not know the state can show it as waiting.
+
 `GET /v1/jobs/{id}/result[?part=N]` → the sync file (below); with `part`, the part's.
 
 `DELETE /v1/jobs/{id}` → stops a narration and deletes its files.

@@ -11,7 +11,11 @@ and does three jobs for the app:
 | **Phone models** | serves the small models the app uses to sync on the phone itself | – |
 
 Narrations survive restarts: if the computer is turned off, the job continues from the last
-finished paragraph when the server starts again. While a long book is narrated, the finished
+finished paragraph when the server starts again. Started in a window, the server asks first about
+each unfinished job: continue it now, delete the work done so far, or keep it on hold (nothing
+works on it, and the question comes back at the next start). That is also how to make room for
+something else on the GPU: close the window, and start the server again later.
+Without a window (a service, Docker) unfinished jobs continue by themselves, as before. While a long book is narrated, the finished
 beginning is published in growing parts (a quarter of the book or 10 minutes, then doubling),
 so listening can start within minutes.
 
