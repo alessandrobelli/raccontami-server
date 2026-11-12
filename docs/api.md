@@ -21,8 +21,23 @@ A job's id is a hash of its inputs: sending the same thing twice returns the exi
 `partial` (narrations only): the latest part of the book that can already be downloaded.
 
 `state` can also be `held` (with `stage` `held`): an unfinished job that the person at the server
-chose to keep without continuing it. Nothing works on it until the server is started again and
-the question about it is answered. Apps that do not know the state can show it as waiting.
+chose to keep without continuing it. Nothing works on it until it is continued from the server's
+page, or the server is started again and the question about it is answered. Apps that do not know
+the state can show it as waiting.
+
+### For the server's own page
+
+`GET /` → the page (no token: it holds no secret, and asks for the token itself).
+
+`GET /v1/jobs` → every job, as above, plus `about` (what it is, in words), `holding` (a hold was
+asked for and the voice is stopping) and `can`: `{"hold": bool, "continue": bool, "delete": bool}`.
+
+`POST /v1/jobs/{id}/hold` → stops working on the job and keeps what it made. A waiting job, or a
+narration that is running; a running sync answers 409. The answer may still say `running` for a
+few seconds.
+
+`POST /v1/jobs/{id}/continue` → puts a job on hold, or a narration that failed with finished
+pieces, back in line. 409 when there is nothing to continue.
 
 `GET /v1/jobs/{id}/result[?part=N]` → the sync file (below); with `part`, the part's.
 

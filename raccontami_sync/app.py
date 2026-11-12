@@ -108,6 +108,8 @@ class JobState:
         self.id = job_id
         self.kind = kind
         self.cancelled = False
+        self.hold = False  # asked to stop and keep everything (the server's page): see hold_job
+        self.about = None  # what the job is, in words, for the server's page (worked out once)
         self.partial = None  # narrations: latest published part {"release", "audioSeconds", "toToken"}
         self.dir = JOBS / job_id
         self.state = "queued"
@@ -252,10 +254,14 @@ def _worker():
             if models.unload_if_idle():
                 log("idle for 10 min: models unloaded from the GPU")
             continue
-        j = jobs[job_id]
+        j = jobs.get(job_id)
+        if j is None or j.state != "queued":  # put on hold, or deleted, while it waited
+            continue
         if ONE_JOB and models.turn.locked():
             log(f"{j.label()}: waits for the narration to finish (RACCONTAMI_ONE_JOB)")
         with models.turn:  # taken before begin(), so a job that waits still shows as queued
+            if j.state != "queued":
+                continue
             j.begin()
             log(f"{j.label()}: started")
             try:
@@ -278,12 +284,12 @@ def _worker():
 def _narration_worker():
     while True:
         j = jobs.get(narrations.get())
-        if j is None or j.cancelled:
+        if j is None or j.cancelled or j.state != "queued":  # deleted, or put on hold, while it waited
             continue
         if ONE_JOB and models.turn.locked():
             log(f"{j.label()}: waits for the sync to finish (RACCONTAMI_ONE_JOB)")
         with models.turn:  # taken before begin(), so a narration that waits still shows as queued
-            if j.cancelled:  # deleted on the phone while it waited for its turn
+            if j.cancelled or j.state != "queued":  # the same, while it waited for its turn
                 continue
             if ONE_JOB and models.unload_whisper():
                 log("Whisper unloaded from the GPU to make room for the voice (RACCONTAMI_ONE_JOB)")
@@ -296,7 +302,7 @@ def _narration_worker():
 
             try:
                 res = narrate.run(models, j.dir, DATA, progress=lambda s, f: j.set_progress(s, f),
-                                  stop=lambda: j.cancelled, on_release=on_release,
+                                  stop=lambda j=j: j.cancelled or j.hold, on_release=on_release,
                                   note=lambda msg, j=j: log(f"{j.label()}: {msg}"))
                 if j.cancelled:
                     raise InterruptedError("cancelled")
@@ -308,6 +314,16 @@ def _narration_worker():
                 if j.cancelled:
                     shutil.rmtree(j.dir, ignore_errors=True)
                     log(f"{j.label()}: stopped and deleted (the story was deleted on the phone)")
+                    continue
+                if j.hold:  # stopped on purpose: every finished piece stays, nothing is marked as failed
+                    j.hold = False
+                    j.state, j.stage, j.error = unfinished.HELD, unfinished.HELD, None
+                    j.save()
+                    # the reason to put work on hold is often to leave the GPU to something else
+                    busy = any(x.state == "running" for x in jobs.values())
+                    freed = not busy and models.unload_now()
+                    log(f"{j.label()}: put on hold, its finished pieces are kept"
+                        + ("; models unloaded from the GPU" if freed else ""))
                     continue
                 traceback.print_exc()
                 j.state, j.error = "failed", f"{type(e).__name__}: {e}"
@@ -339,7 +355,9 @@ async def _lifespan(_app):
     held = [j for j in jobs.values() if j.state == unfinished.HELD]
     if held:
         log(f"  on hold, not worked on: " + ", ".join(j.label() for j in held)
-            + ". Start the server in a window to be asked about them again")
+            + ". Continue them from the server's page, or start the server in a window to be asked again")
+    log("  page: this server's address in a browser (on this computer: http://localhost:8765/, if the port was "
+        "not changed) shows the work, and can put it on hold or continue it")
     yield
 
 
@@ -347,7 +365,7 @@ app = FastAPI(title="Raccontami sync server", version="0.1.0", lifespan=_lifespa
 # token and size are checked here, before any of a request's body is read (see gate.py)
 MAX_UPLOAD = 4 * 1024 ** 3  # an audiobook; long ones are around 1 GB
 MAX_BODY = 64 * 1024 ** 2  # everything else, the text of a long book included
-app.add_middleware(Gate, token=TOKEN, open_paths=("/v1/hello",), default_limit=MAX_BODY, limits={"/v1/jobs": MAX_UPLOAD})
+app.add_middleware(Gate, token=TOKEN, open_paths=("/v1/hello", "/"), default_limit=MAX_BODY, limits={"/v1/jobs": MAX_UPLOAD})
 
 
 @app.get("/v1/hello")
@@ -518,6 +536,75 @@ def delete_job(job_id: str):
         except OSError:
             pass
     return {"deleted": job_id}
+
+
+@app.post("/v1/jobs/{job_id}/hold", dependencies=[Depends(auth)])
+def hold_job(job_id: str):
+    """Stops working on a job and keeps everything it has made. A narration that is running stops
+    within seconds (the answer still says "running" until it has); one that waits is taken out of the
+    line. It stays on hold until it is continued here or at the start of the server."""
+    j = jobs.get(job_id)
+    if j is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    if j.state == "queued":
+        j.state, j.stage = unfinished.HELD, unfinished.HELD
+        j.save()
+        log(f"{j.label()}: put on hold while it waited")
+    elif j.state == "running" and j.kind == "narrate":
+        j.hold = True
+    elif j.state == "running":
+        raise HTTPException(status_code=409, detail="a sync that is running cannot be put on hold: it has no place "
+                                                    "to stop and pick up again. It ends by itself, usually within minutes")
+    elif j.state != unfinished.HELD:
+        raise HTTPException(status_code=409, detail=f"this job is {j.state}: there is nothing to put on hold")
+    return j.view()
+
+
+@app.post("/v1/jobs/{job_id}/continue", dependencies=[Depends(auth)])
+def continue_job(job_id: str):
+    """Puts a job that is on hold, or a narration that stopped with finished pieces, back in line."""
+    j = jobs.get(job_id)
+    if j is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    if j.state in ("queued", "running"):
+        j.hold = False  # asked to continue before the hold took effect
+        return j.view()
+    if not unfinished.can_continue(j.dir, {"state": j.state, "kind": j.kind}):
+        raise HTTPException(status_code=409, detail=f"this job is {j.state}: there is nothing to continue")
+    j.state, j.stage, j.error = "queued", "queued", None
+    if j.kind == "sync":
+        j.progress = 0.0
+    j.save()
+    (narrations if j.kind == "narrate" else work).put(j.id)
+    log(f"{j.label()}: continued; queued")
+    return j.view()
+
+
+@app.get("/v1/jobs", dependencies=[Depends(auth)])
+def list_jobs():
+    """Every job the server knows, for its own page: what the phone sees of each, what it is in words,
+    and what can be done with it now."""
+    out = []
+    for j in list(jobs.values()):
+        if j.about is None:
+            j.about = unfinished.about(j.dir, j.kind)
+        status = {"state": j.state, "kind": j.kind}
+        out.append({**j.view(), "about": j.about, "holding": j.hold,
+                    "can": {"hold": j.state == "queued" or (j.state == "running" and j.kind == "narrate" and not j.hold),
+                            "continue": unfinished.can_continue(j.dir, status),
+                            "delete": j.kind == "narrate"}})
+    order = {"running": 0, "queued": 1, unfinished.HELD: 2, "failed": 3, "done": 4}
+    return sorted(out, key=lambda v: order.get(v["state"], 5))
+
+
+@app.get("/", include_in_schema=False)
+def page():
+    """The server's own page. It holds no secret: what it shows and does goes through the routes
+    above, with the token the reader types into it once."""
+    from fastapi.responses import FileResponse
+
+    return FileResponse(Path(__file__).with_name("page.html"), media_type="text/html; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/v1/jobs/{job_id}", dependencies=[Depends(auth)])

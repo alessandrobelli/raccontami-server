@@ -56,17 +56,35 @@ def _hm(seconds: float) -> str:
     return f"{seconds // 60} min" if seconds < 3600 else f"{seconds // 3600} h {seconds % 3600 // 60:02d} min"
 
 
-def describe(job: Path, status: dict) -> list[str]:
-    """A few lines that let the reader recognise the job: the server knows no titles, so a narration
-    is told by its language, its length and its first words."""
-    kind = status.get("kind", "sync")
-    percent = f"{int(float(status.get('progress') or 0) * 100)} % done"
+def can_continue(job: Path, status: dict) -> bool:
+    """Work that is kept and not being done: on hold, or a narration that stopped with finished pieces."""
+    return status.get("state") not in ("queued", "running") and is_unfinished(job, status)
+
+
+def about(job: Path, kind: str) -> str:
+    """One line that lets the reader recognise the job: the server knows no titles, so a narration
+    is told by its language, its length and its first words. Reads the whole text of the book:
+    work it out once per job, not at every look."""
     try:
         meta = json.loads((job / "meta.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         meta = {}
+    if not isinstance(meta, dict):
+        meta = {}
     tokens = meta.get("tokens") if isinstance(meta.get("tokens"), list) else []
     lang = {"en": "English", "it": "Italian"}.get(meta.get("lang"), meta.get("lang") or "unknown language")
+    if kind != "narrate":
+        return f"A sync of an audiobook with its text, {lang}, {len(tokens):,} words"
+    start = meta.get("start") if isinstance(meta.get("start"), int) else 0
+    first = " ".join(str(t) for t in tokens[start:start + 8])
+    return (f"A narration, {lang}, {len(tokens):,} words (about {_hm(len(tokens) / 2.5)} of audio)"
+            + (f', beginning "{first} ..."' if first else ""))
+
+
+def describe(job: Path, status: dict) -> list[str]:
+    """A few lines about an unfinished job, for the question at the start."""
+    kind = status.get("kind", "sync")
+    percent = f"{int(float(status.get('progress') or 0) * 100)} % done"
     try:
         last = time.strftime("%d %b %H:%M", time.localtime((job / "status.json").stat().st_mtime))
     except OSError:
@@ -75,16 +93,12 @@ def describe(job: Path, status: dict) -> list[str]:
     how = {"failed": "It stopped with an error (closing the server's window while it works does that).",
            HELD: "It was put on hold at an earlier start.",
            "queued": "It was waiting for its turn."}.get(state, "It was being worked on when the server stopped.")
+    lines = [about(job, kind)]
     if kind == "narrate":
-        start = meta.get("start") if isinstance(meta.get("start"), int) else 0
-        first = " ".join(str(t) for t in tokens[start:start + 8])
-        lines = [f"A narration, {lang}, {len(tokens):,} words (about {_hm(len(tokens) / 2.5)} of audio)"
-                 + (f', beginning "{first} ..."' if first else "")]
         done = pieces_done(job)
         lines.append(f"{percent}" + (f", {done:,} pieces of audio already made" if done else "") + f". Last worked on: {last}.")
     else:
-        lines = [f"A sync of an audiobook with its text, {lang}, {len(tokens):,} words",
-                 f"Last worked on: {last}. A sync starts again from the beginning (what was heard so far is kept)."]
+        lines.append(f"Last worked on: {last}. A sync starts again from the beginning (what was heard so far is kept).")
     lines.append(how)
     return lines
 

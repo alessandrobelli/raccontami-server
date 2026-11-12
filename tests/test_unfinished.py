@@ -106,6 +106,27 @@ class UnfinishedTest(unittest.TestCase):
         (d / "meta.json").write_text("{broken", encoding="utf-8")
         self.assertIn("A narration", u.describe(d, s)[0])
 
+    # what the server's page may continue
+
+    def test_a_job_on_hold_can_be_continued(self):
+        self.assertTrue(u.can_continue(*self.job("n1", state=u.HELD, kind="narrate")))
+
+    def test_a_failed_narration_with_pieces_can_be_continued(self):
+        self.assertTrue(u.can_continue(*self.job("n1", pieces=3, state="failed", kind="narrate")))
+
+    def test_a_running_job_has_nothing_to_continue(self):
+        self.assertFalse(u.can_continue(*self.job("n1", state="running", kind="narrate")))
+
+    def test_a_waiting_job_has_nothing_to_continue(self):
+        self.assertFalse(u.can_continue(*self.job("n1", state="queued", kind="narrate")))
+
+    def test_a_finished_job_has_nothing_to_continue(self):
+        self.assertFalse(u.can_continue(*self.job("n1", pieces=3, state="done", kind="narrate")))
+
+    def test_a_sync_is_told_as_a_sync(self):
+        d, _ = self.job("a1", state="running", kind="sync")
+        self.assertIn("A sync of an audiobook", u.about(d, "sync"))
+
     def test_a_window_without_a_keyboard_is_not_asked(self):
         class Piped:
             def isatty(self):

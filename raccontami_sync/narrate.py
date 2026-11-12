@@ -23,6 +23,8 @@ import json
 import os
 import re
 import subprocess
+import threading
+import time
 import wave
 from pathlib import Path
 
@@ -214,6 +216,17 @@ def _run_worker(job: Path, voice: dict, on_piece, stop, note=lambda msg: None) -
     proc = subprocess.Popen([voice["python"], "-u", str(Path(__file__).with_name("narrate_worker.py")), str(job)],
                             stdout=subprocess.PIPE, stderr=log, text=True, encoding="utf-8", env=env,
                             creationflags=flags)
+
+    def watch():
+        # the voice prints nothing while it loads (minutes, the first time): a stop asked for then
+        # must not wait for its next line
+        while proc.poll() is None:
+            if stop():
+                proc.kill()
+                return
+            time.sleep(0.5)
+
+    threading.Thread(target=watch, daemon=True).start()
     try:
         for line in proc.stdout:
             log.write(line)
@@ -402,6 +415,8 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
     # pieces already on disk (resuming): time them first
     for p in spoken:
         if wav_of(p["i"]).exists():
+            if stop():  # thousands of pieces can take minutes: a stop asked for here is not kept waiting
+                raise InterruptedError("stopped")
             align(p["i"])
     announced = read_json(rel_file)
     if isinstance(announced, dict) and "release" in announced:

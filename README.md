@@ -13,9 +13,17 @@ and does three jobs for the app:
 Narrations survive restarts: if the computer is turned off, the job continues from the last
 finished paragraph when the server starts again. Started in a window, the server asks first about
 each unfinished job: continue it now, delete the work done so far, or keep it on hold (nothing
-works on it, and the question comes back at the next start). That is also how to make room for
-something else on the GPU: close the window, and start the server again later.
-Without a window (a service, Docker) unfinished jobs continue by themselves, as before. While a long book is narrated, the finished
+works on it, and the question comes back at the next start).
+Without a window (a service, Docker) unfinished jobs continue by themselves, as before.
+
+The server has a page of its own: open its address in a browser (on the same computer,
+`http://localhost:8765/`) and type the token once. It shows what the server is working on, and each
+job can be put on hold, continued or deleted there. Putting a narration on hold stops the voice
+within seconds and keeps every finished piece: that is the way to leave the graphics card to
+something else for a while without stopping the server. A sync that is running cannot be put on
+hold; it ends by itself, usually within minutes.
+
+While a long book is narrated, the finished
 beginning is published in growing parts (a quarter of the book or 10 minutes, then doubling),
 so listening can start within minutes.
 
