@@ -1,0 +1,31 @@
+{
+  "format": "raccontami-theme",
+  "version": 1,
+  "name": "Lavender Night",
+  "author": "Example",
+  "light": {
+    "page": "#F3F0F7",
+    "surface": "#EAE5F1",
+    "raised": "#FBF9FD",
+    "line": "#D6CFE2",
+    "text": "#2B2735",
+    "textMuted": "#5E5770",
+    "textFaint": "#7D7590",
+    "untimedText": "#ACA4BC",
+    "accent": "#6B4FA0",
+    "highlight": "#6B4FA02E"
+  },
+  "dark": {
+    "page": "#23202B",
+    "surface": "#1D1A24",
+    "raised": "#2F2B39",
+    "line": "#3B3646",
+    "text": "#ECE6F4",
+    "textMuted": "#B3AAC4",
+    "textFaint": "#8F86A1",
+    "untimedText": "#645C74",
+    "accent": "#B79CEB",
+    "highlight": "#B79CEB40"
+  },
+  "highlight": { "style": "underline", "radius": 0 }
+}
