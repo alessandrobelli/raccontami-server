@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import bisect
 import json
 import os
 import re
@@ -27,6 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import paths
 from .jsonfile import read_json, write_json
 from .pipeline import ALIGN_MODELS, SR, Models, Progress, Result, fill_missing
 from .textnorm import norm_parts
@@ -66,6 +68,29 @@ def voices(data: Path) -> dict:
     return out
 
 
+def voice_library(data: Path, lang: str) -> dict:
+    """The voices a narrator can be given besides the language's own, by id.
+
+    Each is a clip of a few seconds of clean speech: the .wav files in <repo>/voices/<lang>/ and in
+    <data>/voices/<lang>/ (the file name without .wav is the id). A voices.json beside them may
+    say more: {"<id>": {"label": "Anna", "gender": "f"}}. Only a voice that clones from a clip
+    (VoxCPM2) can use them."""
+    if voices(data).get(lang, {}).get("engine") != "voxcpm2":
+        return {}
+    out = {}
+    # (the module's VOICES is the table of built-in voices; the folder of clips is paths.VOICES)
+    for folder in (paths.VOICES / lang, data / "voices" / lang):
+        if not folder.is_dir():
+            continue
+        info = read_json(folder / "voices.json")
+        info = info if isinstance(info, dict) else {}
+        for clip in sorted(folder.glob("*.wav")):
+            more = info.get(clip.stem) if isinstance(info.get(clip.stem), dict) else {}
+            out[clip.stem] = {"voice": str(clip), "label": str(more.get("label", clip.stem)),
+                              "gender": more.get("gender") if more.get("gender") in ("f", "m") else None}
+    return out
+
+
 # ---------------------------------------------------------------- plan
 
 _SENTENCE_END = re.compile(r"[.!?…]+[\"'»”’)\]]*$")
@@ -100,17 +125,28 @@ def speakable(tokens: list[str]) -> str:
     return text[0].upper() + text[1:] if text else text
 
 
-def plan_pieces(tokens: list[str], paragraphs: list[int], start: int = 0) -> list[dict]:
+def plan_pieces(tokens: list[str], paragraphs: list[int], start: int = 0, silent=(),
+                narrators=(), cast=None) -> list[dict]:
     """Pieces as {"i", "from", "to" (inclusive token range), "say", "pause"}.
 
     The pieces before token [start] (the title page and index of a scan) are kept, so that
-    token numbers stay the same, but they are not spoken and take no time."""
-    starts = sorted(set(p for p in paragraphs if 0 <= p < len(tokens)) | {0})
+    token numbers stay the same, but they are not spoken and take no time.
+
+    The tokens numbered in [silent] (the symbols that mark who narrates) are never spoken:
+    they stay in their piece, so the reader still shows them, without a time.
+
+    [narrators] says who tells the story from which token on, as [first token, name] in order,
+    and [cast] which voice each name has. A piece never crosses a change of narrator, and one
+    whose narrator has a voice carries it as "voice"; the others are read by the language's own."""
+    silent = set(silent)
+    changes = [int(first) for first, _name in narrators]
+    # a change of narrator is a break like a new paragraph, also in the middle of one
+    starts = sorted(set(p for p in list(paragraphs) + changes if 0 <= p < len(tokens)) | {0})
     bounds = list(zip(starts, starts[1:] + [len(tokens)]))
     pieces: list[dict] = []
 
     def add(a: int, b: int, pause: float):
-        say = speakable(tokens[a:b])
+        say = speakable([t for k, t in enumerate(tokens[a:b], a) if k not in silent])
         if b <= start:
             say, pause = "", 0.0
         elif not any(ch.isalnum() for ch in say):
@@ -138,6 +174,12 @@ def plan_pieces(tokens: list[str], paragraphs: list[int], start: int = 0) -> lis
         edges = [a] + cuts + [b]
         for x, y in zip(edges, edges[1:]):
             add(x, y, PAUSE_PARAGRAPH if y == b else PAUSE_SPLIT)
+    if cast and changes:
+        for p in pieces:
+            k = bisect.bisect_right(changes, p["from"]) - 1
+            voice = cast.get(narrators[k][1]) if k >= 0 else None
+            if voice:
+                p["voice"] = voice
     return pieces
 
 
@@ -240,12 +282,18 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
     phone can start listening early. [on_release] gets {"release", "audioSeconds", "toToken"}."""
     meta = json.loads((job / "meta.json").read_text(encoding="utf-8"))
     lang, tokens = meta["lang"], meta["tokens"]
+    silent = set(meta.get("silent") or ())  # never spoken, so never timed
     voice = voices(data)[lang]
     plan_file = job / "plan.json"
     if plan_file.exists():
         plan = json.loads(plan_file.read_text(encoding="utf-8"))
     else:
-        plan = {"voice": voice, "pieces": plan_pieces(tokens, meta["paragraphs"], meta.get("start", 0))}
+        # the cast is settled here, with the plan: a narration that is resumed keeps its voices
+        library = voice_library(data, lang)
+        cast = {name: v for name, v in (meta.get("cast") or {}).items() if v in library}
+        plan = {"voice": voice, "voices": {v: library[v]["voice"] for v in sorted(set(cast.values()))},
+                "pieces": plan_pieces(tokens, meta["paragraphs"], meta.get("start", 0), meta.get("silent", ()),
+                                      meta.get("narrators") or (), cast)}
         plan_file.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
     pieces = plan["pieces"]
     spoken = [p for p in pieces if p["say"]]
@@ -271,6 +319,8 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
         p = by_index[i]
         words, owner = [], []
         for d in range(p["from"], p["to"] + 1):
+            if d in silent:
+                continue
             for part in norm_parts(tokens[d], lang):
                 words.append(part)
                 owner.append(d)

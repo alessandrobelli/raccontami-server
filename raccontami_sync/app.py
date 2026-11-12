@@ -326,7 +326,11 @@ def health():
     return {"ok": True, "version": app.version, "name": NAME,
             "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
             "queue": work.qsize(), "languages": sorted(pipeline.ALIGN_MODELS),
-            "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()}}
+            "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()},
+            # the voices a narrator can be given, per language (none: one voice only)
+            "voices": {lang: [{"id": k, "label": v["label"], "gender": v["gender"]}
+                              for k, v in narrate.voice_library(DATA, lang).items()]
+                       for lang in narrate.voices(DATA) if narrate.voice_library(DATA, lang)}}
 
 
 def _outdated(j: JobState) -> bool:
@@ -393,13 +397,34 @@ def create_narration(body: dict = Body(...)):
         # the first word to read: what is before it (title page, index) is in the text but not narrated
         start = body.get("start", 0)
         assert isinstance(start, int) and not isinstance(start, bool) and 0 <= start < len(tokens)
+        # words that are in the text but never spoken: the symbols that mark who narrates
+        silent = body.get("silent", [])
+        assert isinstance(silent, list) and all(isinstance(k, int) and not isinstance(k, bool) and 0 <= k < len(tokens) for k in silent)
+        silent = sorted(set(silent))
+        # who narrates from which word on, and the voice of each: see narrate.plan_pieces
+        narrators = body.get("narrators", [])
+        assert isinstance(narrators, list) and len(narrators) <= 50_000
+        assert all(isinstance(p, list) and len(p) == 2 and isinstance(p[0], int) and not isinstance(p[0], bool)
+                   and 0 <= p[0] < len(tokens) and isinstance(p[1], str) and len(p[1]) <= 60 for p in narrators)
+        assert all(a[0] < b[0] for a, b in zip(narrators, narrators[1:]))
+        cast = body.get("cast", {})
+        assert isinstance(cast, dict) and len(cast) <= 200
+        assert all(isinstance(k, str) and isinstance(v, str) and 0 < len(v) <= 60 for k, v in cast.items())
+        cast = dict(sorted(cast.items()))
+        if not cast or not narrators:  # one voice for everything
+            narrators, cast = [], {}
     except Exception:
-        raise HTTPException(status_code=400, detail="body must be JSON with lang, a non-empty tokens list, paragraphs and an optional start")
+        raise HTTPException(status_code=400, detail="body must be JSON with lang, a non-empty tokens list, paragraphs, "
+                                                    "and optional start, silent, narrators and cast")
     voice = narrate.voices(DATA)[lang]
     key = {"kind": "narrate", "v": narrate.VERSION, "lang": lang, "tokens": tokens, "paragraphs": paragraphs,
            "voice": {k: v for k, v in voice.items() if k != "python"}}
     if start:
         key["start"] = start  # left out for 0, so books sent before this existed keep their job
+    if silent:
+        key["silent"] = silent
+    if cast:
+        key["narrators"], key["cast"] = narrators, cast
     job_id = "n" + hashlib.sha256(json.dumps(key, ensure_ascii=False).encode()).hexdigest()[:19]
     j = jobs.get(job_id)
     if j is not None and j.state != "failed":
@@ -408,7 +433,8 @@ def create_narration(body: dict = Body(...)):
     j = JobState(job_id, "narrate")
     j.dir.mkdir(parents=True, exist_ok=True)  # a failed narration keeps its finished pieces
     (j.dir / DELETED).unlink(missing_ok=True)  # sent again after being deleted: it is wanted again
-    (j.dir / "meta.json").write_text(json.dumps({"lang": lang, "tokens": tokens, "paragraphs": paragraphs, "start": start},
+    (j.dir / "meta.json").write_text(json.dumps({"lang": lang, "tokens": tokens, "paragraphs": paragraphs, "start": start, "silent": silent,
+                                                 "narrators": narrators, "cast": cast},
                                                 ensure_ascii=False), encoding="utf-8")
     j.save()
     jobs[job_id] = j
