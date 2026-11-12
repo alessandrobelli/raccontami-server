@@ -7,6 +7,8 @@ an RTX 5080: Whisper ~85 % of the time, alignment ~13 %):
 
 from __future__ import annotations
 
+import contextlib
+import os
 import subprocess
 import threading
 import time
@@ -22,7 +24,8 @@ from .matcher import match
 from .textnorm import norm_parts, strip_accents
 
 SR = 16000
-WHISPER_MODEL = "turbo"
+# finds the anchors only (wav2vec2 does the word times): turbo is close to large-v3 and several times faster
+WHISPER_MODEL = os.environ.get("RACCONTAMI_WHISPER_MODEL", "turbo")
 ALIGN_MODELS = {
     "en": "facebook/wav2vec2-large-960h-lv60-self",
     "it": "jonatasgrosman/wav2vec2-large-xlsr-53-italian",
@@ -35,13 +38,27 @@ Progress = Callable[[str, float], None]  # (stage, fraction of that stage)
 
 # ---------------------------------------------------------------- models
 
-class Models:
-    """Lazily loaded models, released after a period without jobs."""
+def check_whisper_model(name: str) -> None:
+    """Refuses a Whisper model name that load_model would not know, so a typo in
+    RACCONTAMI_WHISPER_MODEL stops the server at start, not at the first sync."""
+    import whisper
 
-    def __init__(self, cache_dir: Path, idle_unload_s: float = 600):
+    if name not in whisper.available_models() and not Path(name).is_file():
+        raise ValueError(f"unknown Whisper model {name!r} (RACCONTAMI_WHISPER_MODEL); "
+                         f"use one of {', '.join(whisper.available_models())} or the path of a model file")
+
+
+class Models:
+    """Lazily loaded models, released after a period without jobs.
+
+    [one_job]: syncs and narrations take turns on the GPU (hold [turn] for a whole job),
+    for GPUs too small for a narration voice and Whisper at the same time."""
+
+    def __init__(self, cache_dir: Path, idle_unload_s: float = 600, one_job: bool = False):
         self.cache_dir = cache_dir
         self.idle_unload_s = idle_unload_s
         self.lock = threading.Lock()
+        self.turn = threading.Lock() if one_job else contextlib.nullcontext()
         self.whisper = None
         self.aligners: dict[str, "Aligner"] = {}
         self.last_used = time.monotonic()
@@ -59,6 +76,16 @@ class Models:
             self.aligners[lang] = Aligner(ALIGN_MODELS[lang])
         self.last_used = time.monotonic()
         return self.aligners[lang]
+
+    def unload_whisper(self) -> bool:
+        """Frees Whisper now. Needed before a narration on a small GPU: the narration keeps
+        using the aligner, so the idle unload would not come until it ends."""
+        with self.lock:
+            if self.whisper is None:
+                return False
+            self.whisper = None
+            torch.cuda.empty_cache()
+            return True
 
     def unload_if_idle(self):
         with self.lock:

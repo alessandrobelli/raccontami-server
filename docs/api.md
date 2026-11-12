@@ -40,7 +40,7 @@ Parts grow (the beginning of the book up to `partial.toToken`); their timings ma
 
 ```json
 {"format": "raccontami-sync", "version": 3, "language": "it", "duration": 812.4,
- "engine": {"anchors": "whisper-turbo", "align": "<model>"}  /* narrations: {"tts": "<voice>", "align": "<model>"} */,
+ "engine": {"anchors": "whisper-<model, turbo by default>", "align": "<model>"}  /* narrations: {"tts": "<voice>", "align": "<model>"} */,
  "units": [[firstToken, lastToken, startSeconds, endSeconds], ...],
  "audioGaps": [{"t0", "t1", "excerpt"}], "textGaps": [{"from", "to"}],
  "corrections": [{"t": token, "w": "spoken word"}],

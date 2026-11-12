@@ -26,8 +26,11 @@ for repo in REPOS:
     print("model", repo, flush=True)
     snapshot_download(repo)
 
-print("model whisper turbo", flush=True)
 import whisper  # noqa: E402
 
-whisper._download(whisper._MODELS["turbo"], str(MODELS / "whisper"), in_memory=False)
+from raccontami_sync.pipeline import WHISPER_MODEL  # noqa: E402  (RACCONTAMI_WHISPER_MODEL, default turbo)
+
+if WHISPER_MODEL in whisper._MODELS:  # a model file given by its path needs no download
+    print("model whisper", WHISPER_MODEL, flush=True)
+    whisper._download(whisper._MODELS[WHISPER_MODEL], str(MODELS / "whisper"), in_memory=False)
 print("all models ready")
