@@ -48,6 +48,16 @@ Parts grow (the beginning of the book up to `partial.toToken`); their timings ma
  "stats": {...}}
 ```
 
+## Reading positions
+
+So that a second phone or tablet continues where the first stopped. The book is named by a key the
+app computes from its text (a hex hash, 16 to 64 characters), so the server does not need the book.
+The position is a word of the text (its token number), not a time in the audio.
+
+- `PUT /v1/positions/<key>` with `{"token": 1234, "at": <epoch ms>, "device": "<id>", "name": "<shown name>"}`:
+  kept if newer than what the server has. Answers with the newest position known, which may be another device's.
+- `GET /v1/positions/<key>`: the newest position, or 404 when the server has none for this book.
+
 ## Phone models
 
 `GET /v1/models` → file names; `GET /v1/models/{name}` → the file

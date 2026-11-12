@@ -48,6 +48,7 @@ from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, U
 from . import narrate, pipeline  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
+from .positions import Positions, valid as valid_position  # noqa: E402
 
 JOBS = DATA / "jobs"
 JOBS.mkdir(parents=True, exist_ok=True)
@@ -502,6 +503,27 @@ def job_status(job_id: str):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="unknown job")
     return jobs[job_id].view()
+
+
+# ---- reading positions, so another phone or tablet continues where this one stopped
+
+positions = Positions(DATA / "positions.json")
+
+
+@app.get("/v1/positions/{key}", dependencies=[Depends(auth)])
+def get_position(key: str):
+    found = positions.get(key)
+    if found is None:
+        raise HTTPException(status_code=404, detail="no position for this book")
+    return found
+
+
+@app.put("/v1/positions/{key}", dependencies=[Depends(auth)])
+def put_position(key: str, body: dict = Body(...)):
+    given = valid_position(key, body)
+    if given is None:
+        raise HTTPException(status_code=400, detail="body must be JSON with token, at and device; the key is the book's hash")
+    return positions.put(key, *given)  # the newest known, which may be another device's
 
 
 # ---- on-phone sync models (made by server/onnx/export_ctc.py)
