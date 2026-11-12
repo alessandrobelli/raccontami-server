@@ -297,6 +297,17 @@ def _narration_worker():
             j.save()
 
 
+def _gpu_name() -> str | None:
+    """The GPU's name, or None without one. CUDA can be installed with no card to use
+    (hidden from this process, or a driver without a device): that is "no GPU", not an error."""
+    import torch
+
+    try:
+        return torch.cuda.get_device_name(0) if torch.cuda.is_available() and torch.cuda.device_count() > 0 else None
+    except (AssertionError, RuntimeError):
+        return None
+
+
 @asynccontextmanager
 async def _lifespan(_app):
     _load_existing()
@@ -304,7 +315,7 @@ async def _lifespan(_app):
     threading.Thread(target=_narration_worker, daemon=True).start()
     import torch
 
-    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "no CUDA GPU found"
+    gpu = _gpu_name() or "no CUDA GPU found"
     log("Raccontami server started")
     log(f"  GPU: {gpu}")
     log(f"  voices: " + ", ".join(f"{LANG_NAMES.get(k, k)}: {v.get('label', v['engine'])}"
@@ -314,6 +325,11 @@ async def _lifespan(_app):
     # the token goes to the window only, never into server.log: logs get shared when asking for help
     print(f"          token for the app: {TOKEN}", flush=True)
     log(f"  token for the app: shown above, and in {DATA / 'token.txt'}")
+    code = os.environ.get("RACCONTAMI_TLS_CODE")  # set by serve.py when the link is encrypted
+    if code:
+        log(f"  encrypted link: yes. The app shows this code when it connects; check that it is the same: {code}")
+    else:
+        log("  encrypted link: no (plain HTTP). Others on the same network can read what passes; see the README")
     log(f"  data: {DATA}")
     waiting = [j for j in jobs.values() if j.state == "queued"]
     if waiting:
@@ -340,7 +356,7 @@ def health():
     import torch
 
     return {"ok": True, "version": app.version, "name": NAME,
-            "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+            "gpu": _gpu_name(),
             "queue": work.qsize(), "languages": sorted(pipeline.ALIGN_MODELS),
             "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()},
             # the voices a narrator can be given, per language (none: one voice only)

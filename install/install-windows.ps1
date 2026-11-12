@@ -85,10 +85,12 @@ set RACCONTAMI_HOME=$H
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
 rem set RACCONTAMI_NAME=My PC
+rem Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
+rem set RACCONTAMI_TLS=0
 rem GPU under 12 GB: run syncs and narrations one at a time
 rem set RACCONTAMI_ONE_JOB=1
 cd /d "$Repo"
-"$serverPy" -m uvicorn raccontami_sync.app:app --host 0.0.0.0 --port 8765 --no-access-log --log-level warning
+"$serverPy" -m raccontami_sync.serve
 echo.
 echo The server stopped. Press a key to close this window.
 pause > nul

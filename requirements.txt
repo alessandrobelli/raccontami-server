@@ -7,6 +7,7 @@ rapidfuzz
 numpy
 fastapi
 uvicorn
+cryptography   # the server's own certificate, for the encrypted link
 python-multipart
 wordfreq
 # tools/export_phone_model.py (models for syncing on the phone)

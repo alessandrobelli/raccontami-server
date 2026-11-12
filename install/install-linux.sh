@@ -59,10 +59,12 @@ cat > "$H/start-server.sh" <<EOS
 # Starts the Raccontami server (port 8765). Made by install-linux.sh; run that again to update it.
 export RACCONTAMI_HOME="$H" PYTHONIOENCODING=utf-8 PYTHONUNBUFFERED=1
 # export RACCONTAMI_NAME="My server"
+# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
+# export RACCONTAMI_TLS=0
 # GPU under 12 GB: run syncs and narrations one at a time
 # export RACCONTAMI_ONE_JOB=1
 cd "$REPO"
-exec "$H/env/bin/python" -m uvicorn raccontami_sync.app:app --host 0.0.0.0 --port 8765 --no-access-log --log-level warning
+exec "$H/env/bin/python" -m raccontami_sync.serve
 EOS
 chmod +x "$H/start-server.sh"
 echo "$H/start-server.sh"
