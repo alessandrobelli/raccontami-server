@@ -63,6 +63,12 @@ def can_continue(job: Path, status: dict) -> bool:
     return status.get("state") not in ("queued", "running") and is_unfinished(job, status)
 
 
+def can_delete(status: dict) -> bool:
+    """Any narration (a running one stops within seconds), and a sync the server is not working on:
+    a running sync has no place to stop, and ends by itself."""
+    return status.get("kind") == "narrate" or status.get("state") != "running"
+
+
 LABEL = "label.json"  # what the phone calls the story and which device sent it: for people, never for the work
 
 

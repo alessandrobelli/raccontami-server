@@ -166,6 +166,23 @@ class UnfinishedTest(unittest.TestCase):
     def test_a_finished_job_has_nothing_to_continue(self):
         self.assertFalse(u.can_continue(*self.job("n1", pieces=3, state="done", kind="narrate")))
 
+    # what may be deleted, from the page or by the phone
+
+    def test_a_narration_can_be_deleted_while_it_runs(self):
+        self.assertTrue(u.can_delete({"state": "running", "kind": "narrate"}))
+
+    def test_a_waiting_sync_can_be_deleted(self):
+        self.assertTrue(u.can_delete({"state": "queued", "kind": "sync"}))
+
+    def test_a_sync_on_hold_can_be_deleted(self):
+        self.assertTrue(u.can_delete({"state": u.HELD, "kind": "sync"}))
+
+    def test_a_failed_sync_can_be_deleted(self):
+        self.assertTrue(u.can_delete({"state": "failed", "kind": "sync"}))
+
+    def test_a_running_sync_cannot_be_deleted(self):
+        self.assertFalse(u.can_delete({"state": "running", "kind": "sync"}))
+
     def test_a_sync_is_told_as_a_sync(self):
         d, _ = self.job("a1", state="running", kind="sync")
         self.assertIn("A sync of an audiobook", u.about(d, "sync"))

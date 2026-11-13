@@ -48,7 +48,8 @@ pieces, back in line. 409 when there is nothing to continue.
 
 `GET /v1/jobs/{id}/result[?part=N]` → the sync file (below); with `part`, the part's.
 
-`DELETE /v1/jobs/{id}` → stops a narration and deletes its files.
+`DELETE /v1/jobs/{id}` → stops a narration and deletes its files; also deletes a sync that is waiting, on hold
+or failed (the phone syncs it itself, or no longer has the story). A running sync is `409`: it ends by itself.
 
 ### Sync an audiobook
 

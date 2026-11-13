@@ -12,7 +12,8 @@
        /v1/jobs/{id}/audio?part=N and /v1/jobs/{id}/result?part=N -> part N while narrating:
                              the finished beginning of the book (the job view's "partial" says
                              the latest N, its audio length and its last token)
-  DELETE /v1/jobs/{id}       -> stops a narration and deletes its pieces (the story was deleted on the phone)
+  DELETE /v1/jobs/{id}       -> stops a narration and deletes its pieces (the story was deleted on the phone),
+                                or deletes a sync the server is not working on (409 while it runs)
 
 Narrations run on their own queue, so a book narrated overnight does not hold up
 audiobook syncs (unless RACCONTAMI_ONE_JOB=1: then they take turns, for small GPUs).
@@ -561,13 +562,20 @@ def job_audio(job_id: str, part: int = 0):
 
 @app.delete("/v1/jobs/{job_id}", dependencies=[Depends(auth)])
 def delete_job(job_id: str):
+    """Deletes a narration (a running one stops within seconds), or a sync the server is not working
+    on: the phone syncs it itself now, or no longer has the story. A running sync ends by itself."""
     j = jobs.get(job_id)
-    if j is None or j.kind != "narrate":
-        raise HTTPException(status_code=404, detail="unknown narration")
+    if j is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    if not unfinished.can_delete({"state": j.state, "kind": j.kind}):
+        raise HTTPException(status_code=409, detail="a sync that is running cannot be stopped: it ends by itself, "
+                                                    "usually within minutes")
     j.cancelled = True
     jobs.pop(job_id, None)
     if j.state != "running":  # a running one is removed by its worker once the voice stops
+        j.state = "deleted"  # a worker that already took it from the line skips it
         shutil.rmtree(j.dir, ignore_errors=True)
+        log(f"{j.label()}: deleted")
     else:
         # the worker may not get to it before the server stops: this mark makes the next start
         # finish the deletion instead of narrating a story the phone no longer has
@@ -735,7 +743,7 @@ def list_jobs():
         out.append({**j.view(), "about": j.about, "details": details, "holding": j.hold,
                     "can": {"hold": j.state == "queued" or (j.state == "running" and j.kind == "narrate" and not j.hold),
                             "continue": unfinished.can_continue(j.dir, status),
-                            "delete": j.kind == "narrate"}})
+                            "delete": unfinished.can_delete(status)}})
     order = {"running": 0, "queued": 1, unfinished.HELD: 2, "failed": 3, "done": 4}
     return sorted(out, key=lambda v: order.get(v["state"], 5))
 
