@@ -18,6 +18,12 @@ class TrayTest(unittest.TestCase):
     def test_without_either_it_is_the_usual_port(self):
         self.assertEqual(8765, tray.own_port(["python"], {}))
 
+    def test_the_page_is_https_when_the_link_is_encrypted(self):
+        self.assertEqual("https://localhost:8765/", tray.own_url(["python"], {"RACCONTAMI_TLS_CODE": "AB12"}))
+
+    def test_the_page_is_http_without_the_encrypted_link(self):
+        self.assertEqual("http://localhost:9000/", tray.own_url(["python"], {"RACCONTAMI_PORT": "9000"}))
+
     def test_no_icon_outside_windows(self):
         self.assertIsNotNone(tray.why_not("linux", {}))
 

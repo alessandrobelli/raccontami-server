@@ -31,6 +31,13 @@ def own_port(argv=None, env=None) -> int:
     return int(value) if value.isdigit() else 8765
 
 
+def own_url(argv=None, env=None) -> str:
+    """This server's page on this computer: https when serve.py started it with the encrypted link."""
+    env = os.environ if env is None else env
+    scheme = "https" if env.get("RACCONTAMI_TLS_CODE") else "http"
+    return f"{scheme}://localhost:{own_port(argv, env)}/"
+
+
 def why_not(platform=None, env=None) -> str | None:
     """None when an icon can be tried here; otherwise the reason there is none, for the log."""
     platform, env = sys.platform if platform is None else platform, os.environ if env is None else env
@@ -57,7 +64,7 @@ def image(kind: str):
 
 class Tray:
     def __init__(self, name: str, port: int, summary, can, hold_all, continue_all, quit_server, log, folder=None):
-        self.url = f"http://localhost:{port}/"
+        self.url = own_url(env={**os.environ, "RACCONTAMI_PORT": str(port)}, argv=[])
         self.name, self.summary, self.can = name, summary, can
         self.hold_all, self.continue_all, self.quit_server, self.log = hold_all, continue_all, quit_server, log
         self.folder = folder  # where the token and the log are: the only way to them without a window

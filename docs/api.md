@@ -3,6 +3,13 @@
 Every request except `/v1/hello` needs `Authorization: Bearer <token>`. JSON in and out unless noted.
 A job's id is a hash of its inputs: sending the same thing twice returns the existing job.
 
+## Transport
+
+Started with `python -m raccontami_sync.serve`, the server speaks HTTPS on port 8765 with a certificate it
+made itself (`tls-cert.pem` in the data folder). A client cannot check it against a public authority; it pins
+the SHA-256 of the certificate (DER) after showing the reader its first 16 hex digits, in groups of four, to
+compare with the server's window. `RACCONTAMI_TLS=0` gives plain HTTP on the same port.
+
 ## Health
 
 `GET /v1/hello` (no token) → `{"app": "raccontami", "name", "version"}`. Used by the app's "Search local network" to recognize the server.
@@ -74,6 +81,16 @@ Parts grow (the beginning of the book up to `partial.toToken`); their timings ma
  "partial": {"release": 2, "toToken": 5321}  /* only in a part */,
  "stats": {...}}
 ```
+
+## Reading positions
+
+So that a second phone or tablet continues where the first stopped. The book is named by a key the
+app computes from its text (a hex hash, 16 to 64 characters), so the server does not need the book.
+The position is a word of the text (its token number), not a time in the audio.
+
+- `PUT /v1/positions/<key>` with `{"token": 1234, "at": <epoch ms>, "device": "<id>", "name": "<shown name>"}`:
+  kept if newer than what the server has. Answers with the newest position known, which may be another device's.
+- `GET /v1/positions/<key>`: the newest position, or 404 when the server has none for this book.
 
 ## Phone models
 

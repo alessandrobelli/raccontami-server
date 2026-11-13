@@ -10,4 +10,4 @@ fi
 for m in facebook/wav2vec2-base-960h jonatasgrosman/wav2vec2-large-xlsr-53-italian; do
   [ -f "/data/onnx/${m##*/}.int8.onnx" ] || "$PY" tools/export_phone_model.py "$m" /data/onnx || true
 done
-exec "$PY" -m uvicorn raccontami_sync.app:app --host 0.0.0.0 --port 8765 --no-access-log --log-level warning
+exec "$PY" -m raccontami_sync.serve

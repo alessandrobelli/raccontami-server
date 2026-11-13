@@ -7,6 +7,7 @@ rapidfuzz
 numpy
 fastapi
 uvicorn
+cryptography   # the server's own certificate, for the encrypted link
 python-multipart
 wordfreq
 # the icon next to the clock (raccontami_sync/tray.py): Windows only, and the server runs without them

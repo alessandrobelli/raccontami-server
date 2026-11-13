@@ -38,9 +38,9 @@ def failure_text(log_text: str) -> str:
     return "The server stopped right after starting.\n\n" + tail
 
 
-def command(python: Path, host: str, port: int) -> list[str]:
-    return [str(python), "-m", "uvicorn", "raccontami_sync.app:app", "--host", host, "--port", str(port),
-            "--no-access-log", "--log-level", "warning"]
+def command(python: Path) -> list[str]:
+    """The same start as in a window (serve.py: the encrypted link); address and port go by RACCONTAMI_HOST/PORT."""
+    return [str(python), "-m", "raccontami_sync.serve"]
 
 
 def _tell(text: str) -> None:
@@ -60,7 +60,8 @@ def main(argv=None, wait: float = 40.0, tell=_tell) -> int:
     a = p.parse_args(argv)
     if a.home:
         os.environ["RACCONTAMI_HOME"] = a.home
-    os.environ.update(RACCONTAMI_WINDOWLESS="1", RACCONTAMI_PORT=str(a.port), PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    os.environ.update(RACCONTAMI_WINDOWLESS="1", RACCONTAMI_HOST=a.host, RACCONTAMI_PORT=str(a.port),
+                      PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
     from .paths import DATA  # after the settings above: it reads them
 
     DATA.mkdir(parents=True, exist_ok=True)
@@ -70,7 +71,7 @@ def main(argv=None, wait: float = 40.0, tell=_tell) -> int:
     start = log.stat().st_size if log.exists() else 0
     python = Path(sys.executable).with_name("python.exe" if os.name == "nt" else "python")
     with open(log, "ab") as out:
-        proc = subprocess.Popen(command(python, a.host, a.port), cwd=Path(__file__).resolve().parent.parent,
+        proc = subprocess.Popen(command(python), cwd=Path(__file__).resolve().parent.parent,
                                 stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:

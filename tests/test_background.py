@@ -44,8 +44,8 @@ class FailureTextTest(unittest.TestCase):
     def test_an_empty_log_still_gives_a_message(self):
         self.assertIn("left no explanation", background.failure_text(""))
 
-    def test_the_server_is_started_on_the_port_asked_for(self):
-        self.assertEqual(["--port", "9000"], background.command(Path("python.exe"), "0.0.0.0", 9000)[6:8])
+    def test_the_server_is_started_like_in_a_window_so_the_link_stays_encrypted(self):
+        self.assertEqual(["python.exe", "-m", "raccontami_sync.serve"], background.command(Path("python.exe")))
 
 
 class PatientTest(unittest.TestCase):
