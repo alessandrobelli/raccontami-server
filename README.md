@@ -11,7 +11,36 @@ and does three jobs for the app:
 | **Phone models** | serves the small models the app uses to sync on the phone itself | – |
 
 Narrations survive restarts: if the computer is turned off, the job continues from the last
-finished paragraph when the server starts again. While a long book is narrated, the finished
+finished paragraph when the server starts again. Started in a window, the server asks first about
+each unfinished job: continue it now, delete the work done so far, or keep it on hold (nothing
+works on it, and the question comes back at the next start). Without an answer within a minute
+(`RACCONTAMI_ASK_SECONDS`, 0 = wait for ever) the server goes on by itself: work that was running
+continues, and nothing is deleted.
+Without a window (a service, Docker) unfinished jobs continue by themselves, as before.
+Only one server runs on a data folder: a second start says so and ends, instead of touching the
+work of the first.
+
+The server has a page of its own: open its address in a browser (on the same computer,
+`http://localhost:8765/`) and type the token once. It shows what the server is working on, and each
+job can be put on hold, continued or deleted there. Putting a narration on hold stops the voice
+within seconds and keeps every finished piece: that is the way to leave the graphics card to
+something else for a while without stopping the server. A sync that is running cannot be put on
+hold; it ends by itself, usually within minutes.
+
+On Windows the server also puts an icon next to the clock (Windows may keep it behind the small
+arrow there). Its colour says whether the server is working, on hold or idle; a click opens the
+page; its menu puts everything on hold, continues it, or stops the server. Stopping it from there
+leaves a narration in progress to be asked about at the next start, instead of marked as failed.
+`RACCONTAMI_TRAY=0` switches the icon off; without it the server works the same.
+
+The Windows installer also makes a shortcut that starts the server without a window
+(`pythonw -m raccontami_sync.background`): it then lives next to the clock only, so there is no
+window to close by mistake in the middle of a narration. Started this way it does not take the
+graphics card by itself: unfinished work is kept on hold and the icon says so, until it is
+continued from the icon or the page. The token is in `server-data/token.txt` (the icon's menu opens
+that folder), and what the window would have shown is in `server-data/window.log`.
+
+While a long book is narrated, the finished
 beginning is published in growing parts (a quarter of the book or 10 minutes, then doubling),
 so listening can start within minutes.
 

@@ -87,10 +87,15 @@ class Models:
             torch.cuda.empty_cache()
             return True
 
-    def unload_if_idle(self):
+    def unload_now(self) -> bool:
+        """Frees every model now, whatever was used last: asked for when work is put on hold to
+        leave the GPU to something else. They load again when the next job needs them."""
+        return self.unload_if_idle(after=-1)
+
+    def unload_if_idle(self, after: float | None = None):
         with self.lock:
             loaded = self.whisper is not None or self.aligners
-            if loaded and time.monotonic() - self.last_used > self.idle_unload_s:
+            if loaded and time.monotonic() - self.last_used > (self.idle_unload_s if after is None else after):
                 self.whisper = None
                 self.aligners.clear()
                 torch.cuda.empty_cache()

@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Raccontami server</title>
+<style>
+  :root {
+    --page: #eef1f4; --surface: #f8f9fb; --line: #cfd5dd; --text: #1c2330; --muted: #5a6474;
+    --accent: #1d4fbf; --on-accent: #ffffff; --danger: #b3261e; --mark: #fbe27a; --track: #dde2e9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #14181f; --surface: #1c222b; --line: #333c49; --text: #e6e9ee; --muted: #9aa4b2;
+      --accent: #8fb0ff; --on-accent: #0f1626; --danger: #ff8a80; --mark: #6b5a12; --track: #2a323d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 16px 48px; }
+  h1 { font: 700 30px/1.2 Georgia, "Times New Roman", serif; margin: 0 0 4px; }
+  h1 span { background: linear-gradient(transparent 55%, var(--mark) 55%); }
+  h2 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 32px 0 10px; }
+  p { margin: 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .state { font-weight: 600; }
+  h3 { font: 700 20px/1.3 Georgia, "Times New Roman", serif; margin: 6px 0 2px; overflow-wrap: anywhere; }
+  .card .facts { margin: 4px 0 14px; font-size: 15px; }
+  .bar { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; margin: 10px 0 12px; }
+  .bar div { height: 100%; background: var(--accent); border-radius: 4px; transition: width .4s; }
+  button { font: inherit; font-weight: 600; border-radius: 999px; padding: 8px 18px; cursor: pointer;
+           border: 1px solid var(--line); background: transparent; color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input { font: inherit; width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+          background: var(--page); color: var(--text); }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .error { color: var(--danger); margin-top: 8px; }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>Raccontami</span> server</h1>
+  <p class="muted" id="subtitle">What this computer is working on for your phone.</p>
+
+  <section id="signin" hidden>
+    <h2>Token</h2>
+    <div class="card">
+      <form id="tokenForm">
+        <label for="token">The server's token</label>
+        <input id="token" type="password" autocomplete="off" spellcheck="false" required>
+        <p class="muted small" style="margin-top:8px">Shown in the server's window when it starts, and saved in
+          server-data/token.txt on this computer (the icon next to the clock opens that folder). It is kept in this browser only.</p>
+        <p class="error" id="tokenError" hidden></p>
+        <div class="row" style="margin-top:14px"><button class="primary" type="submit">Open</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section id="content" hidden>
+    <h2>Work</h2>
+    <div class="row" id="all" style="margin-bottom:12px" hidden>
+      <button id="holdAll" type="button">Put everything on hold</button>
+      <button id="continueAll" type="button">Continue what is on hold</button>
+    </div>
+    <div id="jobs"></div>
+    <p class="muted" id="none" hidden>Nothing to do: no story is waiting or being worked on.</p>
+    <p class="error" id="actionError" hidden></p>
+
+    <h2>This server</h2>
+    <div class="card">
+      <dl class="facts" id="facts"></dl>
+      <div class="row" style="margin-top:14px"><button id="forget" type="button">Forget the token in this browser</button></div>
+    </div>
+    <p class="muted small" id="lost" hidden>The server does not answer. It may be stopped; this page tries again by itself.</p>
+  </section>
+</main>
+
+<script>
+"use strict";
+// Everything goes through the server's API with the token in a header. No cookies: another site
+// open in this browser cannot use this page's access. Text that came from the phone is always
+// written with textContent, never as HTML.
+const KEY = "raccontami.token";
+const $ = id => document.getElementById(id);
+let token = "";
+try { token = localStorage.getItem(KEY) || ""; } catch (e) { /* private window: asked every time */ }
+let timer = null;
+
+async function api(method, path) {
+  const r = await fetch(path, { method, headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+  let body = null;
+  try { body = await r.json(); } catch (e) { /* no body */ }
+  if (!r.ok) {
+    const err = new Error(body && body.detail ? String(body.detail) : "The server answered " + r.status);
+    err.status = r.status;
+    throw err;
+  }
+  return body;
+}
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+function timeLeft(s) {
+  if (s == null) return "";
+  if (s < 90) return "about a minute left";
+  if (s < 3600) return "about " + Math.round(s / 60) + " min left";
+  return "about " + Math.floor(s / 3600) + " h " + String(Math.round(s % 3600 / 60)).padStart(2, "0") + " min left";
+}
+
+const STAGES = { decode: "reading the audio", transcribe: "listening", match: "matching the text",
+                 align: "timing the words", narrate: "narrating", encode: "writing the audio file",
+                 queued: "getting ready (finished pieces are checked first)" };
+
+function stateText(j) {
+  if (j.holding) return "Stopping, to be kept on hold…";
+  switch (j.state) {
+    case "running": return "Working: " + (STAGES[j.stage] || j.stage);
+    case "queued": return "Waiting for its turn";
+    case "held": return "On hold";
+    case "failed": return j.can.continue ? "Stopped with an error; what it made is kept" : "Failed";
+    case "done": return "Finished";
+    default: return j.state;
+  }
+}
+
+function showSignIn(message) {
+  clearTimeout(timer);
+  $("content").hidden = true;
+  $("signin").hidden = false;
+  $("tokenError").hidden = !message;
+  $("tokenError").textContent = message || "";
+  $("token").focus();
+}
+
+function actionButton(label, cls, run) {
+  const b = el("button", label, cls);
+  b.type = "button";
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    $("actionError").hidden = true;
+    try { await run(); } catch (e) {
+      $("actionError").textContent = e.message;
+      $("actionError").hidden = false;
+    }
+    refresh();
+  });
+  return b;
+}
+
+// A card is built again only when what it offers changes; progress alone is written into the card
+// that is there, so a button is never swapped away under the pointer or the keyboard.
+const cards = new Map(); // job id -> { card, shape, numbers, fill }
+
+function shapeOf(j) {
+  return JSON.stringify([j.state, j.stage, j.holding, j.can, j.about, j.error]);
+}
+
+function setProgress(c, j) {
+  const pct = Math.round(j.progress * 100);
+  c.numbers.textContent = pct + " %" + (j.etaSeconds != null ? " · " + timeLeft(j.etaSeconds) : "");
+  c.fill.style.width = pct + "%";
+  const d = j.details || {};
+  c.live.pieces(d.piecesTotal ? count(d.piecesDone || 0) + " of " + count(d.piecesTotal) + " made"
+                : d.piecesDone ? count(d.piecesDone) + " made" : "");
+  c.live.ready(d.audioReadySeconds ? "the first " + duration(d.audioReadySeconds) + " can already be listened to" : "");
+  c.live.last(d.lastWorked && j.state !== "queued" ? when(d.lastWorked) : "");
+}
+
+const count = n => Number(n).toLocaleString("en");
+
+function duration(s) {
+  if (s < 3600) return Math.max(1, Math.round(s / 60)) + " min";
+  return Math.floor(s / 3600) + " h " + String(Math.round(s % 3600 / 60)).padStart(2, "0") + " min";
+}
+
+function when(epochSeconds) {
+  return new Date(epochSeconds * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// A fact whose value changes while the page is open: returns how to set it; empty hides the line.
+function liveFact(dl, name) {
+  const dt = el("dt", name), dd = el("dd", "");
+  dt.hidden = dd.hidden = true;
+  dl.append(dt, dd);
+  return value => { dd.textContent = value; dt.hidden = dd.hidden = !value; };
+}
+
+function showJobs(list) {
+  const box = $("jobs");
+  for (const id of [...cards.keys()]) if (!list.some(j => j.id === id)) { cards.get(id).card.remove(); cards.delete(id); }
+  list.forEach((j, at) => {
+    let c = cards.get(j.id);
+    const shape = shapeOf(j);
+    if (!c || c.shape !== shape) {
+      const fresh = jobCard(j);
+      fresh.shape = shape;
+      if (c) c.card.replaceWith(fresh.card);
+      cards.set(j.id, c = fresh);
+    }
+    setProgress(c, j);
+    if (box.children[at] !== c.card) box.insertBefore(c.card, box.children[at] || null);
+  });
+}
+
+function jobCard(j) {
+  const card = el("div", null, "card");
+  const head = el("div", null, "row");
+  const numbers = el("span", "", "muted");
+  head.append(el("span", stateText(j), "state"), numbers);
+  const d = j.details || {};
+  const narration = j.kind === "narrate";
+  card.append(head, el("h3", d.title || (narration ? "A narration without a name" : "A sync without a name")));
+  if (!d.title) card.append(el("p", "The phone app that sent it does not tell the server the story's name yet.", "muted small"));
+  const bar = el("div", null, "bar"), fill = el("div");
+  bar.append(fill);
+  card.append(bar);
+  const dl = el("dl", null, "facts");
+  fact(dl, "What", narration ? "Narration: the server reads the text aloud" : "Sync: an audiobook lined up with its text");
+  if (d.beginning) fact(dl, "Begins", "“" + d.beginning + " …”");
+  fact(dl, "Language", d.language);
+  if (d.words) fact(dl, "Length", count(d.words) + " words" + (d.audioSecondsAbout ? ", about " + duration(d.audioSecondsAbout) + " of audio" : ""));
+  if (narration) fact(dl, "Voices", d.narrators ? d.narrators + " narrators told by " + d.voices + " voices" : "one voice");
+  const live = { pieces: liveFact(dl, "Pieces of audio"), ready: liveFact(dl, "On the phone") };
+  if (d.sent) fact(dl, "Sent", when(d.sent) + (d.device ? ", from " + d.device : ""));
+  live.last = liveFact(dl, "Last worked on");
+  if (j.state === "failed" && j.error) fact(dl, "Error", j.error);
+  card.append(dl);
+  const buttons = el("div", null, "row");
+  const at = "/v1/jobs/" + encodeURIComponent(j.id);
+  if (j.can.continue) buttons.append(actionButton("Continue", "primary", () => api("POST", at + "/continue")));
+  if (j.can.hold) buttons.append(actionButton("Put on hold", "", () => api("POST", at + "/hold")));
+  if (j.can.delete) buttons.append(actionButton("Delete", "danger", async () => {
+    if (confirm("Delete this narration and everything made for it so far?\n\nThis cannot be undone.")) {
+      await api("DELETE", at);
+    }
+  }));
+  if (buttons.childElementCount) card.append(buttons);
+  if (j.state === "held") card.append(el("p", "Nothing works on it. Continue it here, or answer the question the server asks when it starts.", "muted small"));
+  return { card, numbers, fill, live };
+}
+
+function fact(dl, name, value) {
+  if (value == null || value === "") return;
+  dl.append(el("dt", name), el("dd", String(value)));
+}
+
+async function refresh() {
+  clearTimeout(timer);
+  try {
+    const [health, jobs] = await Promise.all([api("GET", "/v1/health"), api("GET", "/v1/jobs")]);
+    $("signin").hidden = true;
+    $("content").hidden = false;
+    $("lost").hidden = true;
+    $("subtitle").textContent = "What " + (health.name || "this computer") + " is working on for your phone.";
+    const shown = jobs.filter(j => j.state !== "done");
+    const finished = jobs.length - shown.length;
+    showJobs(shown);
+    $("none").hidden = shown.length > 0;
+    // for everything at once, as in the icon's menu: worth showing when there is more than one job to press
+    const canHold = shown.filter(j => j.can.hold).length, onHold = shown.filter(j => j.state === "held").length;
+    $("holdAll").hidden = canHold < 2;
+    $("continueAll").hidden = onHold < 2;
+    $("all").hidden = canHold < 2 && onHold < 2;
+    const dl = $("facts");
+    dl.replaceChildren();
+    fact(dl, "Name", health.name);
+    fact(dl, "Graphics card", health.gpu || "none found");
+    fact(dl, "Voices", Object.entries(health.narration || {}).map(([lang, v]) => lang + ": " + v).join(", "));
+    fact(dl, "Finished jobs kept", finished);
+    fact(dl, "Version", health.version);
+  } catch (e) {
+    if (e.status === 401) { showSignIn(token ? "The server does not accept this token." : ""); return; }
+    $("lost").hidden = false;
+  }
+  timer = setTimeout(refresh, 3000);
+}
+
+$("tokenForm").addEventListener("submit", ev => {
+  ev.preventDefault();
+  token = $("token").value.trim();
+  $("token").value = "";
+  try { localStorage.setItem(KEY, token); } catch (e) { /* kept for this visit only */ }
+  refresh();
+});
+for (const [id, path] of [["holdAll", "/v1/hold"], ["continueAll", "/v1/continue"]]) {
+  $(id).addEventListener("click", async () => {
+    $("actionError").hidden = true;
+    try {
+      const r = await api("POST", path);
+      if (r && r.message) { $("actionError").textContent = r.message; $("actionError").hidden = false; }
+    } catch (e) { $("actionError").textContent = e.message; $("actionError").hidden = false; }
+    refresh();
+  });
+}
+$("forget").addEventListener("click", () => {
+  token = "";
+  try { localStorage.removeItem(KEY); } catch (e) { /* nothing was kept */ }
+  showSignIn("");
+});
+
+if (token) refresh(); else showSignIn("");
+</script>
+</body>
+</html>
