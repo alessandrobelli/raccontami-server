@@ -72,8 +72,22 @@ if (-not $RaccontamiHome) {
 $H = [System.IO.Path]::GetFullPath($RaccontamiHome)
 $tools = Join-Path $H "tools"
 $tmp = Join-Path $tools "download"
-New-Item -ItemType Directory -Force $H, $tools, $tmp | Out-Null
-Write-Host "Home folder: $H"
+
+# ---- can this computer run it at all? Found out before anything is downloaded.
+Step "Checking the computer"
+try { $gpu = (& nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>$null) } catch { $gpu = $null }
+if (-not $gpu) { Fail "No NVIDIA graphics card was found (the program nvidia-smi, which comes with its driver, did not answer). The server needs one. If the computer has one, install its latest driver from nvidia.com and run this again." }
+Write-Host "Graphics card: $(@($gpu)[0])"
+$driver = 0
+if (@($gpu)[0] -match ',\s*(\d+)\.[\d.]+\s*$') { $driver = [int]$Matches[1] }
+if ($driver -and $driver -lt 570) { Fail "The NVIDIA driver is version $driver; the server needs 570 or newer. Update it from nvidia.com (or the NVIDIA app), then run this again." }
+New-Item -ItemType Directory -Force $H | Out-Null
+$freeGB = [math]::Floor(([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($H))).AvailableFreeSpace / 1GB)
+Write-Host "Home folder: $H   ($freeGB GB free on its drive)"
+if (-not (Test-Path (Join-Path $H "env\Scripts\python.exe")) -and $freeGB -lt 35) {
+    Fail "A new install needs about 35 GB and this drive has $freeGB GB free. Free some space, or run this again and choose a folder on another drive."
+}
+New-Item -ItemType Directory -Force $tools, $tmp | Out-Null
 
 # ---- the server's code
 Step "The server's code"
@@ -159,3 +173,5 @@ if ($OnlyTools) {
 # ---- the installer: environments, models, start files, firewall and login
 $installer = Join-Path $code "install\install-windows.ps1"
 & $installer -RaccontamiHome $H -Python $python -NoQuestions:$NoQuestions
+# the installer says why it stopped; passed on, so that the window that started this says it did not finish
+if ($LASTEXITCODE) { throw "the installer stopped" }

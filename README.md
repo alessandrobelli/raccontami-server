@@ -28,7 +28,7 @@ same steps but have not been run on real hardware yet; reports welcome.
 | Disk | 35 GB | 50 GB on a fast drive, plus room for finished work (see [Disk space](#disk-space)) |
 | Software | Windows: nothing, the setup brings its own. Linux: Python 3.12, ffmpeg, git | |
 
-The setup checks the driver and the free space before it downloads anything.
+The Windows setup checks the graphics card, its driver and the free space before it downloads anything.
 
 ## Install
 
@@ -42,9 +42,10 @@ installers download about 35 GB and are safe to stop and run again: they only ad
      ```powershell
      irm https://raw.githubusercontent.com/alessandrobelli/raccontami-server/main/install/setup.ps1 | iex
      ```
-   - Or download [Install Raccontami server.cmd](https://github.com/alessandrobelli/raccontami-server/raw/main/Install%20Raccontami%20server.cmd)
-     and double-click it. Windows warns about a file from the internet that it does not know:
-     choose **More info**, then **Run anyway**. The first way has no such warning.
+   - Or save the file [Install Raccontami server.cmd](https://github.com/alessandrobelli/raccontami-server/raw/main/Install%20Raccontami%20server.cmd)
+     (right-click the link, **Save link as…**; a plain click only shows its text) and double-click
+     it. Windows may warn about a file from the internet that it does not know. The first way has
+     no such warning.
 
    The setup asks where to put everything, then brings what the computer does not have: the
    server's code, a Python of its own and ffmpeg. All of it goes into that one folder, nothing is
