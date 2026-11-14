@@ -21,13 +21,16 @@ DARK = {"page": "#14181f", "surface": "#1c222b", "line": "#333c49", "text": "#e6
 _one = threading.Lock()  # one window at a time: a second click on the menu does not open a second one
 
 
-def facts(url: str | None, token: str | None, token_file, code: str | None) -> list[tuple[str, str, str]]:
-    """(name, value, note) for each thing the app asks for, in the order the app asks."""
+def facts(url: str | None, token: str | None, token_file, code: str | None,
+          old_code: str | None = None) -> list[tuple[str, str, str]]:
+    """(name, value, note) for each thing the app asks for, in the order the app asks.
+    [old_code]: the same code as an app from before version 0.2 shows it."""
     out = [("Address", url or "this computer's address on your network, port 8765",
             "Or tap “Search local network” in the app: it finds this server by itself.")]
     out.append(("Token", token or f"in {token_file}", "The server's password. Paste it into the app, or type it."))
     if code:
-        out.append(("Code", code, "The app shows a code when it connects. Confirm there only if it shows this one."))
+        out.append(("Code", code, "The app shows a code when it connects. Confirm there only if it shows this one."
+                     + (f" An app not yet updated shows it as {old_code}." if old_code else "")))
     else:
         out.append(("Code", "none", "The link is not encrypted (RACCONTAMI_TLS=0), so there is no code to compare."))
     return out

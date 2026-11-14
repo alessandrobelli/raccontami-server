@@ -64,58 +64,65 @@
   .done-row div { min-width: 0; overflow-wrap: anywhere; }
   .done-row button { flex: none; }
   @media (prefers-reduced-motion: reduce) { .bar div { transition: none; } }
+  .langs { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .langs button { border: 0; padding: 6px 10px; font-weight: 400; color: var(--muted); }
+  .langs button[aria-current] { color: var(--text); font-weight: 600; text-decoration: underline; }
+  a { color: var(--accent); }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <h1><span>Raccontami</span> server</h1>
-  <p class="muted" id="subtitle">What this computer is working on for your phone.</p>
+  <h1><span>Raccontami</span><b id="titleRest" data-t="titleRest" style="font-weight:inherit"> server</b></h1>
+  <p class="muted" id="subtitle" data-t="subtitleDefault">What this computer is working on for your phone.</p>
   <p class="notice" id="notice" role="status" hidden></p>
 
   <section id="signin" hidden>
-    <h2>Token</h2>
+    <h2 data-t="tokenHead">Token</h2>
     <div class="card">
       <form id="tokenForm">
-        <label for="token">The server's token</label>
+        <label for="token" data-t="tokenLabel">The server's token</label>
         <input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required
                aria-describedby="tokenHelp tokenError">
-        <label class="check"><input id="showToken" type="checkbox"> Show what I type</label>
-        <p class="muted small" id="tokenHelp" style="margin-top:8px">Shown in the server's window when it starts. Without a
-          window: the icon next to the clock, then Connect the phone, where it can be copied. It is also saved in
-          server-data/token.txt on the server. It is kept in this browser only.</p>
+        <label class="check"><input id="showToken" type="checkbox"> <span data-t="showTyped">Show what I type</span></label>
+        <p class="muted small" id="tokenHelp" style="margin-top:8px" data-t="tokenHelp">Shown in the server's window when it starts.</p>
         <p class="error" id="tokenError" role="alert" hidden></p>
-        <div class="row" style="margin-top:14px"><button class="primary" type="submit">Open</button></div>
+        <div class="row" style="margin-top:14px"><button class="primary" type="submit" data-t="open">Open</button></div>
       </form>
     </div>
   </section>
 
   <section id="content" hidden>
-    <h2>Work</h2>
+    <h2 data-t="work">Work</h2>
     <div id="work">
       <div class="row" id="all" style="margin-bottom:12px" hidden>
-        <button id="holdAll" type="button">Put everything on hold</button>
-        <button id="continueAll" type="button">Continue what is on hold</button>
+        <button id="holdAll" type="button" data-t="holdAll">Put everything on hold</button>
+        <button id="continueAll" type="button" data-t="continueAll">Continue what is on hold</button>
       </div>
       <div id="jobs"></div>
-      <p class="muted" id="none" hidden>Nothing to do: no story is waiting or being worked on. Send one from the app:
-        create a story there and choose to sync or narrate it on this server.</p>
+      <p class="muted" id="none" hidden data-t="none">Nothing to do.</p>
 
-      <h2 id="doneHead" hidden>Finished</h2>
+      <h2 id="doneHead" hidden data-t="finished">Finished</h2>
       <div class="card" id="doneCard" hidden>
         <p id="doneSummary"></p>
-        <p class="muted small" style="margin-top:6px">The phone has its own copy of a story once it has downloaded it. A job
-          kept here is answered at once if the same story is sent again; deleted, it would be worked on again.</p>
+        <p class="muted small" style="margin-top:6px" data-t="doneNote">The phone has its own copy of a story once it has downloaded it.</p>
         <details class="more" id="doneMore"><summary>Show them</summary><div id="done"></div></details>
       </div>
     </div>
 
-    <h2>This server</h2>
+    <h2 data-t="thisServer">This server</h2>
     <div class="card">
       <dl class="facts" id="facts"></dl>
-      <div class="row" style="margin-top:14px"><button id="forget" type="button">Forget the token in this browser</button></div>
+      <div class="row" style="margin-top:14px">
+        <button id="check" type="button" data-t="check">Check for a newer version</button>
+        <button id="forget" type="button" data-t="forget">Forget the token in this browser</button>
+      </div>
+      <p class="muted small" style="margin-top:8px" data-t="checkNote">The check asks GitHub, and only when you press it.</p>
+      <p id="checkResult" role="status" style="margin-top:10px" hidden></p>
     </div>
   </section>
+
+  <p class="langs" id="langs"></p>
 </main>
 
 <script>
@@ -123,22 +130,208 @@
 // Everything goes through the server's API with the token in a header. No cookies: another site
 // open in this browser cannot use this page's access. Text that came from the phone is always
 // written with textContent, never as HTML.
-const KEY = "raccontami.token";
+const KEY = "raccontami.token", LANG_KEY = "raccontami.lang";
 const $ = id => document.getElementById(id);
 let token = "";
 try { token = localStorage.getItem(KEY) || ""; } catch (e) { /* private window: asked every time */ }
 let timer = null;
+
+// ---- the page's texts, in the languages of the app. {0}, {1} are filled in by t().
+const TEXTS = {
+  en: {
+    name: "English", titleRest: " server",
+    subtitleDefault: "What this computer is working on for your phone.", subtitle: "What {0} is working on for your phone.",
+    tokenHead: "Token", tokenLabel: "The server's token", showTyped: "Show what I type", open: "Open",
+    tokenHelp: "Shown in the server's window when it starts. Without a window: the icon next to the clock, then Connect the phone, where it can be copied. It is also saved in server-data/token.txt on the server. It is kept in this browser only.",
+    badToken: "The server does not accept this token.", answered: "The server answered {0}",
+    work: "Work", holdAll: "Put everything on hold", continueAll: "Continue what is on hold",
+    none: "Nothing to do: no story is waiting or being worked on. Send one from the app: create a story there and choose to sync or narrate it on this server.",
+    finished: "Finished", thisServer: "This server", forget: "Forget the token in this browser",
+    doneNote: "The phone has its own copy of a story once it has downloaded it. A job kept here is answered at once if the same story is sent again; deleted, it would be worked on again.",
+    left1: "about a minute left", leftMin: "about {0} min left", leftH: "about {0} h {1} min left",
+    min: "{0} min", hmin: "{0} h {1} min",
+    stage_decode: "reading the audio", stage_transcribe: "listening", stage_match: "matching the text",
+    stage_align: "timing the words", stage_narrate: "narrating", stage_encode: "writing the audio file",
+    stage_queued: "getting ready (finished pieces are checked first)",
+    stStopping: "Stopping, to be kept on hold…", stWorking: "Working: {0}", stWaiting: "Waiting for its turn", stHeld: "On hold",
+    stFailedKept: "Stopped with an error; what it made is kept", stFailed: "Failed", stDone: "Finished",
+    lost: "The server does not answer since {0}. It may be stopped or starting. ", lostBelow: "What is shown below is from then. ",
+    lostRetry: "This page tries again by itself.",
+    piecesOf: "{0} of {1} made", piecesMade: "{0} made", ready: "The first {0} can already be listened to on the phone.",
+    noNameNarr: "A narration without a name", noNameSync: "A sync without a name",
+    noNameNote: "The phone app that sent it does not tell the server the story's name yet.",
+    progressOf: "Progress of {0}", reported: "The server reported: {0}",
+    continue: "Continue", hold: "Put on hold", delete: "Delete", deleteNamed: "Delete {0}", details: "Details",
+    confirmNarr: "Delete this narration and everything made for it so far?\n\nThis cannot be undone.",
+    confirmSync: "Delete this sync and everything made for it so far?\n\nThis cannot be undone.",
+    syncBusy: "A sync cannot be put on hold or deleted while it runs: it has no place to stop and pick up again. It ends by itself, usually within minutes.",
+    heldNote: "Nothing works on it. Continue it here, or answer the question the server asks when it starts.",
+    fWhat: "What", whatNarr: "Narration: the server reads the text aloud", whatSync: "Sync: an audiobook lined up with its text",
+    fBegins: "Begins", fLanguage: "Language", fLength: "Length", words: "{0} words", wordsAudio: "{0} words, about {1} of audio",
+    fVoices: "Voices", voicesMany: "{0} narrators told by {1} voices", voiceOne: "one voice",
+    fPieces: "Pieces of audio", fSent: "Sent", sentFrom: "{0}, from {1}", fLast: "Last worked on", fDisk: "On disk", fError: "Error",
+    lang_English: "English", lang_Italian: "Italian",
+    done1: "1 finished job is kept on this computer", doneN: "{0} finished jobs are kept on this computer", taking: ", taking {0}.",
+    showIt: "Show it", showThem: "Show them", narration: "Narration", sync: "Sync", finishedAt: "finished {0}",
+    confirmDoneNarr: "Delete the finished narration “{0}” from this computer?\n\nThe story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
+    confirmDoneSync: "Delete the finished sync “{0}” from this computer?\n\nThe story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
+    fName: "Name", fGpu: "Graphics card", gpuNone: "none found", fFree: "Free disk space",
+    freeLow: "{0}: little is left. A narrated book needs a few GB while it is made", fVersion: "Version",
+    check: "Check for a newer version", checkNote: "The check asks GitHub, and only when you press it.", checking: "Asking GitHub…",
+    upToDate: "This is the latest version ({0}).", newer: "Version {0} is out; this server has {1}.", whatsNew: "What is new: {0}",
+    howUpdate: "How to update", checkFailed: "GitHub could not be asked. Check the internet connection of the device this page is open on.",
+    cause_memory: "The graphics card ran out of memory. Close what else is using it (a game, another AI program) and continue; on a card under 12 GB, set RACCONTAMI_ONE_JOB=1 in settings.txt.",
+    cause_disk: "The disk is full. Delete finished jobs below, or free space on the drive, then continue.",
+    cause_audio: "The audio file could not be read. Try it in a player; if it plays, convert it to MP3 or M4A and send it again.",
+    cause_driver: "The graphics card or its driver did not answer. Update the NVIDIA driver, restart the computer, and continue.",
+    cause_network: "A model could not be downloaded. Check the internet connection of this computer and continue.",
+  },
+  it: {
+    name: "Italiano", titleRest: " server",
+    subtitleDefault: "Quello che questo computer sta facendo per il tuo telefono.", subtitle: "Quello che {0} sta facendo per il tuo telefono.",
+    tokenHead: "Token", tokenLabel: "Il token del server", showTyped: "Mostra quello che scrivo", open: "Apri",
+    tokenHelp: "Lo vedi nella finestra del server quando parte. Senza finestra: l'icona accanto all'orologio, poi Connect the phone, da dove puoi copiarlo. È anche salvato in server-data/token.txt sul server. Resta solo in questo browser.",
+    badToken: "Il server non accetta questo token.", answered: "Il server ha risposto {0}",
+    work: "Lavori", holdAll: "Metti tutto in sospeso", continueAll: "Riprendi quello che è in sospeso",
+    none: "Niente da fare: nessuna storia è in attesa o in lavorazione. Mandane una dall'app: crea una storia e scegli di sincronizzarla o narrarla su questo server.",
+    finished: "Finiti", thisServer: "Questo server", forget: "Dimentica il token in questo browser",
+    doneNote: "Il telefono ha la sua copia di una storia dopo averla scaricata. Un lavoro tenuto qui viene restituito subito se la stessa storia viene mandata di nuovo; se lo cancelli, verrebbe rifatto.",
+    left1: "manca circa un minuto", leftMin: "mancano circa {0} min", leftH: "mancano circa {0} h {1} min",
+    min: "{0} min", hmin: "{0} h {1} min",
+    stage_decode: "leggo l'audio", stage_transcribe: "ascolto", stage_match: "confronto con il testo",
+    stage_align: "misuro i tempi delle parole", stage_narrate: "narro", stage_encode: "scrivo il file audio",
+    stage_queued: "mi preparo (prima controllo i pezzi già fatti)",
+    stStopping: "Mi fermo, per restare in sospeso…", stWorking: "Al lavoro: {0}", stWaiting: "Aspetta il suo turno", stHeld: "In sospeso",
+    stFailedKept: "Fermato da un errore; quello che ha fatto è conservato", stFailed: "Non riuscito", stDone: "Finito",
+    lost: "Il server non risponde dalle {0}. Forse è spento o sta partendo. ", lostBelow: "Quello che vedi qui sotto è di allora. ",
+    lostRetry: "Questa pagina riprova da sola.",
+    piecesOf: "{0} di {1} fatti", piecesMade: "{0} fatti", ready: "I primi {0} si possono già ascoltare sul telefono.",
+    noNameNarr: "Una narrazione senza nome", noNameSync: "Una sincronizzazione senza nome",
+    noNameNote: "L'app che l'ha mandata non dice ancora al server il nome della storia.",
+    progressOf: "Avanzamento di {0}", reported: "Il server ha riferito: {0}",
+    continue: "Riprendi", hold: "Metti in sospeso", delete: "Elimina", deleteNamed: "Elimina {0}", details: "Dettagli",
+    confirmNarr: "Eliminare questa narrazione e tutto quello che è stato fatto finora?\n\nNon si può annullare.",
+    confirmSync: "Eliminare questa sincronizzazione e tutto quello che è stato fatto finora?\n\nNon si può annullare.",
+    syncBusy: "Una sincronizzazione in corso non si può mettere in sospeso né eliminare: non ha un punto in cui fermarsi e riprendere. Finisce da sola, di solito in pochi minuti.",
+    heldNote: "Nessuno ci sta lavorando. Riprendila da qui, oppure rispondi alla domanda che il server fa quando parte.",
+    fWhat: "Cosa", whatNarr: "Narrazione: il server legge il testo ad alta voce", whatSync: "Sincronizzazione: un audiolibro allineato al suo testo",
+    fBegins: "Inizia", fLanguage: "Lingua", fLength: "Lunghezza", words: "{0} parole", wordsAudio: "{0} parole, circa {1} di audio",
+    fVoices: "Voci", voicesMany: "{0} narratori letti da {1} voci", voiceOne: "una voce",
+    fPieces: "Pezzi di audio", fSent: "Mandato", sentFrom: "{0}, da {1}", fLast: "Ultimo lavoro", fDisk: "Su disco", fError: "Errore",
+    lang_English: "Inglese", lang_Italian: "Italiano",
+    done1: "1 lavoro finito è conservato su questo computer", doneN: "{0} lavori finiti sono conservati su questo computer", taking: ", per {0}.",
+    showIt: "Mostralo", showThem: "Mostrali", narration: "Narrazione", sync: "Sincronizzazione", finishedAt: "finito {0}",
+    confirmDoneNarr: "Eliminare da questo computer la narrazione finita “{0}”?\n\nLa storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
+    confirmDoneSync: "Eliminare da questo computer la sincronizzazione finita “{0}”?\n\nLa storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
+    fName: "Nome", fGpu: "Scheda grafica", gpuNone: "nessuna trovata", fFree: "Spazio libero su disco",
+    freeLow: "{0}: ne resta poco. Un libro narrato occupa qualche GB mentre viene fatto", fVersion: "Versione",
+    check: "Controlla se c'è una versione più recente", checkNote: "Il controllo chiede a GitHub, e solo quando premi il pulsante.", checking: "Chiedo a GitHub…",
+    upToDate: "Questa è l'ultima versione ({0}).", newer: "È uscita la versione {0}; questo server ha la {1}.", whatsNew: "Novità: {0}",
+    howUpdate: "Come aggiornare", checkFailed: "Non sono riuscito a chiedere a GitHub. Controlla la connessione a internet del dispositivo su cui è aperta questa pagina.",
+    cause_memory: "La scheda grafica ha finito la memoria. Chiudi quello che la sta usando (un gioco, un altro programma di IA) e riprendi; con una scheda sotto i 12 GB, metti RACCONTAMI_ONE_JOB=1 in settings.txt.",
+    cause_disk: "Il disco è pieno. Elimina i lavori finiti qui sotto, o libera spazio sul disco, poi riprendi.",
+    cause_audio: "Il file audio non si è potuto leggere. Provalo in un lettore; se si sente, convertilo in MP3 o M4A e mandalo di nuovo.",
+    cause_driver: "La scheda grafica o il suo driver non hanno risposto. Aggiorna il driver NVIDIA, riavvia il computer e riprendi.",
+    cause_network: "Non è stato possibile scaricare un modello. Controlla la connessione a internet di questo computer e riprendi.",
+  },
+  tr: {
+    name: "Türkçe", titleRest: " sunucusu",
+    subtitleDefault: "Bu bilgisayarın telefonun için yaptığı işler.", subtitle: "{0} adlı bilgisayarın telefonun için yaptığı işler.",
+    tokenHead: "Token", tokenLabel: "Sunucunun token'ı", showTyped: "Yazdığımı göster", open: "Aç",
+    tokenHelp: "Sunucu başlarken penceresinde gösterilir. Pencere yoksa: saatin yanındaki simge, sonra Connect the phone; oradan kopyalanabilir. Ayrıca sunucuda server-data/token.txt dosyasına kaydedilir. Yalnızca bu tarayıcıda saklanır.",
+    badToken: "Sunucu bu token'ı kabul etmiyor.", answered: "Sunucu {0} yanıtını verdi",
+    work: "İşler", holdAll: "Hepsini beklemeye al", continueAll: "Beklemedekileri sürdür",
+    none: "Yapılacak bir şey yok: bekleyen ya da üzerinde çalışılan hikâye yok. Uygulamadan bir tane gönder: orada bir hikâye oluştur ve bu sunucuda eşitlemeyi ya da seslendirmeyi seç.",
+    finished: "Bitenler", thisServer: "Bu sunucu", forget: "Bu tarayıcıdaki token'ı unut",
+    doneNote: "Telefon bir hikâyeyi indirdikten sonra kendi kopyasına sahip olur. Burada tutulan bir iş, aynı hikâye yeniden gönderilirse hemen yanıtlanır; silinirse yeniden yapılır.",
+    left1: "yaklaşık bir dakika kaldı", leftMin: "yaklaşık {0} dk kaldı", leftH: "yaklaşık {0} sa {1} dk kaldı",
+    min: "{0} dk", hmin: "{0} sa {1} dk",
+    stage_decode: "ses okunuyor", stage_transcribe: "dinleniyor", stage_match: "metinle eşleştiriliyor",
+    stage_align: "sözcüklerin zamanı ölçülüyor", stage_narrate: "seslendiriliyor", stage_encode: "ses dosyası yazılıyor",
+    stage_queued: "hazırlanıyor (önce biten parçalar denetlenir)",
+    stStopping: "Beklemeye alınmak üzere duruyor…", stWorking: "Çalışıyor: {0}", stWaiting: "Sırasını bekliyor", stHeld: "Beklemede",
+    stFailedKept: "Bir hatayla durdu; yaptıkları saklandı", stFailed: "Başarısız", stDone: "Bitti",
+    lost: "Sunucu {0} saatinden beri yanıt vermiyor. Durmuş ya da başlıyor olabilir. ", lostBelow: "Aşağıda görünenler o andan kalma. ",
+    lostRetry: "Bu sayfa kendiliğinden yeniden dener.",
+    piecesOf: "{1} parçanın {0} tanesi hazır", piecesMade: "{0} parça hazır", ready: "İlk {0} telefonda şimdiden dinlenebilir.",
+    noNameNarr: "Adsız bir seslendirme", noNameSync: "Adsız bir eşitleme",
+    noNameNote: "Bunu gönderen uygulama hikâyenin adını sunucuya henüz bildirmiyor.",
+    progressOf: "{0} için ilerleme", reported: "Sunucunun bildirdiği: {0}",
+    continue: "Sürdür", hold: "Beklemeye al", delete: "Sil", deleteNamed: "{0} silinsin", details: "Ayrıntılar",
+    confirmNarr: "Bu seslendirme ve şimdiye kadar onun için yapılan her şey silinsin mi?\n\nBu geri alınamaz.",
+    confirmSync: "Bu eşitleme ve şimdiye kadar onun için yapılan her şey silinsin mi?\n\nBu geri alınamaz.",
+    syncBusy: "Çalışan bir eşitleme beklemeye alınamaz ve silinemez: durup kaldığı yerden sürdürebileceği bir yer yoktur. Kendiliğinden biter, çoğunlukla birkaç dakikada.",
+    heldNote: "Üzerinde çalışılmıyor. Buradan sürdür ya da sunucunun başlarken sorduğu soruyu yanıtla.",
+    fWhat: "Ne", whatNarr: "Seslendirme: sunucu metni sesli okur", whatSync: "Eşitleme: bir sesli kitap metniyle hizalanır",
+    fBegins: "Başlangıç", fLanguage: "Dil", fLength: "Uzunluk", words: "{0} sözcük", wordsAudio: "{0} sözcük, yaklaşık {1} ses",
+    fVoices: "Sesler", voicesMany: "{0} anlatıcı, {1} sesle", voiceOne: "tek ses",
+    fPieces: "Ses parçaları", fSent: "Gönderildi", sentFrom: "{0}, {1} cihazından", fLast: "Son çalışma", fDisk: "Diskte", fError: "Hata",
+    lang_English: "İngilizce", lang_Italian: "İtalyanca",
+    done1: "Bu bilgisayarda biten 1 iş saklanıyor", doneN: "Bu bilgisayarda biten {0} iş saklanıyor", taking: "; kapladıkları yer {0}.",
+    showIt: "Göster", showThem: "Göster", narration: "Seslendirme", sync: "Eşitleme", finishedAt: "bitiş: {0}",
+    confirmDoneNarr: "Biten “{0}” seslendirmesi bu bilgisayardan silinsin mi?\n\nTelefon hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
+    confirmDoneSync: "Biten “{0}” eşitlemesi bu bilgisayardan silinsin mi?\n\nTelefon hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
+    fName: "Ad", fGpu: "Ekran kartı", gpuNone: "bulunamadı", fFree: "Boş disk alanı",
+    freeLow: "{0}: az kaldı. Seslendirilen bir kitap yapılırken birkaç GB yer tutar", fVersion: "Sürüm",
+    check: "Daha yeni bir sürüm var mı, bak", checkNote: "Denetim GitHub'a sorar, yalnızca düğmeye bastığında.", checking: "GitHub'a soruluyor…",
+    upToDate: "Bu en son sürüm ({0}).", newer: "{0} sürümü çıktı; bu sunucuda {1} var.", whatsNew: "Yenilikler: {0}",
+    howUpdate: "Nasıl güncellenir", checkFailed: "GitHub'a sorulamadı. Bu sayfanın açık olduğu cihazın internet bağlantısını denetle.",
+    cause_memory: "Ekran kartının belleği doldu. Onu kullanan başka şeyleri (bir oyun, başka bir yapay zekâ programı) kapat ve sürdür; 12 GB'tan küçük bir kartta settings.txt dosyasına RACCONTAMI_ONE_JOB=1 yaz.",
+    cause_disk: "Disk dolu. Aşağıdaki biten işleri sil ya da sürücüde yer aç, sonra sürdür.",
+    cause_audio: "Ses dosyası okunamadı. Bir oynatıcıda dene; çalıyorsa MP3 ya da M4A'ya çevirip yeniden gönder.",
+    cause_driver: "Ekran kartı ya da sürücüsü yanıt vermedi. NVIDIA sürücüsünü güncelle, bilgisayarı yeniden başlat ve sürdür.",
+    cause_network: "Bir model indirilemedi. Bu bilgisayarın internet bağlantısını denetle ve sürdür.",
+  },
+};
+
+// the reader's choice if there is one, otherwise the first language of the browser that the page has
+function pickLanguage(saved, wanted) {
+  if (saved && TEXTS[saved]) return saved;
+  for (const w of wanted || []) {
+    const short = String(w).toLowerCase().split("-")[0];
+    if (TEXTS[short]) return short;
+  }
+  return "en";
+}
+let savedLang = "";
+try { savedLang = localStorage.getItem(LANG_KEY) || ""; } catch (e) { /* follows the browser */ }
+const LANG = pickLanguage(savedLang, navigator.languages || [navigator.language]);
+document.documentElement.lang = LANG;
+
+function t(key, ...values) {
+  const text = TEXTS[LANG][key] != null ? TEXTS[LANG][key] : TEXTS.en[key];
+  return text == null ? key : text.replace(/\{(\d)\}/g, (_, n) => values[n] != null ? values[n] : "");
+}
+
+for (const e of document.querySelectorAll("[data-t]")) e.textContent = t(e.dataset.t);
+for (const code of Object.keys(TEXTS)) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = TEXTS[code].name;
+  b.lang = code;
+  if (code === LANG) b.setAttribute("aria-current", "true");
+  b.addEventListener("click", () => {
+    try { localStorage.setItem(LANG_KEY, code); } catch (e) { /* stays as the browser says */ }
+    location.reload();
+  });
+  $("langs").append(b);
+}
 
 async function api(method, path) {
   const r = await fetch(path, { method, headers: { Authorization: "Bearer " + token }, cache: "no-store" });
   let body = null;
   try { body = await r.json(); } catch (e) { /* no body */ }
   if (!r.ok) {
-    const err = new Error(body && body.detail ? String(body.detail) : "The server answered " + r.status);
+    const err = new Error(body && body.detail ? said(String(body.detail)) : t("answered", r.status));
     err.status = r.status;
     throw err;
   }
   return body;
+}
+
+// The few things the server says in words when it refuses, in the page's language; the rest as it came.
+function said(message) {
+  return /^a sync (that )?is (still )?running/i.test(message) ? t("syncBusy") : message;
 }
 
 function el(tag, text, cls) {
@@ -148,25 +341,23 @@ function el(tag, text, cls) {
   return e;
 }
 
+const two = n => String(n).padStart(2, "0");
+
 function timeLeft(s) {
   if (s == null) return "";
-  if (s < 90) return "about a minute left";
-  if (s < 3600) return "about " + Math.round(s / 60) + " min left";
-  return "about " + Math.floor(s / 3600) + " h " + String(Math.round(s % 3600 / 60)).padStart(2, "0") + " min left";
+  if (s < 90) return t("left1");
+  if (s < 3600) return t("leftMin", Math.round(s / 60));
+  return t("leftH", Math.floor(s / 3600), two(Math.round(s % 3600 / 60)));
 }
 
-const STAGES = { decode: "reading the audio", transcribe: "listening", match: "matching the text",
-                 align: "timing the words", narrate: "narrating", encode: "writing the audio file",
-                 queued: "getting ready (finished pieces are checked first)" };
-
 function stateText(j) {
-  if (j.holding) return "Stopping, to be kept on hold…";
+  if (j.holding) return t("stStopping");
   switch (j.state) {
-    case "running": return "Working: " + (STAGES[j.stage] || j.stage);
-    case "queued": return "Waiting for its turn";
-    case "held": return "On hold";
-    case "failed": return j.can.continue ? "Stopped with an error; what it made is kept" : "Failed";
-    case "done": return "Finished";
+    case "running": return t("stWorking", TEXTS.en["stage_" + j.stage] ? t("stage_" + j.stage) : j.stage);
+    case "queued": return t("stWaiting");
+    case "held": return t("stHeld");
+    case "failed": return j.can.continue ? t("stFailedKept") : t("stFailed");
+    case "done": return t("stDone");
     default: return j.state;
   }
 }
@@ -177,10 +368,7 @@ let refused = "", lostAt = null;
 
 function showNotice() {
   const lost = lostAt !== null;
-  const text = lost
-    ? "The server does not answer since " + lostAt + ". It may be stopped or starting. "
-      + ($("content").hidden ? "" : "What is shown below is from then. ") + "This page tries again by itself."
-    : refused;
+  const text = lost ? t("lost", lostAt) + ($("content").hidden ? "" : t("lostBelow")) + t("lostRetry") : refused;
   $("notice").textContent = text;
   $("notice").hidden = !text;
   $("work").classList.toggle("stale", lost);
@@ -235,23 +423,24 @@ function setProgress(c, j) {
   c.fill.style.width = pct + "%";
   c.bar.setAttribute("aria-valuenow", pct);
   const d = j.details || {};
-  c.live.pieces(d.piecesTotal ? count(d.piecesDone || 0) + " of " + count(d.piecesTotal) + " made"
-                : d.piecesDone ? count(d.piecesDone) + " made" : "");
-  const ready = d.audioReadySeconds ? "The first " + duration(d.audioReadySeconds) + " can already be listened to on the phone." : "";
+  c.live.pieces(d.piecesTotal ? t("piecesOf", count(d.piecesDone || 0), count(d.piecesTotal))
+                : d.piecesDone ? t("piecesMade", count(d.piecesDone)) : "");
+  const ready = d.audioReadySeconds ? t("ready", duration(d.audioReadySeconds)) : "";
   c.ready.textContent = ready;
   c.ready.hidden = !ready;
   c.live.last(d.lastWorked && j.state !== "queued" ? when(d.lastWorked) : "");
   c.live.size(d.bytes ? size(d.bytes) : "");
 }
 
-const count = n => Number(n).toLocaleString("en");
+const count = n => Number(n).toLocaleString(LANG);
 
 function size(bytes) {
   const mb = bytes / 1048576;
-  return mb < 1000 ? Math.max(1, Math.round(mb)) + " MB" : (mb / 1024).toFixed(1) + " GB";
+  return mb < 1000 ? Math.max(1, Math.round(mb)) + " MB"
+                   : (mb / 1024).toLocaleString(LANG, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " GB";
 }
 
-const nameOf = j => (j.details || {}).title || (j.kind === "narrate" ? "A narration without a name" : "A sync without a name");
+const nameOf = j => (j.details || {}).title || t(j.kind === "narrate" ? "noNameNarr" : "noNameSync");
 
 // Facts are open on a wide screen and folded on a phone, until the reader chooses; the choice is
 // kept when a card is built again.
@@ -259,12 +448,12 @@ const factsOpen = new Map(); // job id -> what the reader chose
 const wide = () => window.matchMedia("(min-width: 700px)").matches;
 
 function duration(s) {
-  if (s < 3600) return Math.max(1, Math.round(s / 60)) + " min";
-  return Math.floor(s / 3600) + " h " + String(Math.round(s % 3600 / 60)).padStart(2, "0") + " min";
+  if (s < 3600) return t("min", Math.max(1, Math.round(s / 60)));
+  return t("hmin", Math.floor(s / 3600), two(Math.round(s % 3600 / 60)));
 }
 
 function when(epochSeconds) {
-  return new Date(epochSeconds * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return new Date(epochSeconds * 1000).toLocaleString(LANG, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 // A fact whose value changes while the page is open: returns how to set it; empty hides the line.
@@ -292,6 +481,14 @@ function showJobs(list) {
   });
 }
 
+// What went wrong: in the reader's words when the server knows the cause, otherwise the start of
+// what it reported. A failure is never shown without a reason.
+function whyFailed(j) {
+  if (j.errorCause && TEXTS.en["cause_" + j.errorCause]) return t("cause_" + j.errorCause);
+  if (j.errorHint) return j.errorHint;
+  return j.error ? t("reported", j.error.length > 220 ? j.error.slice(0, 220) + " …" : j.error) : "";
+}
+
 function jobCard(j) {
   const card = el("div", null, "card");
   const head = el("div", null, "row");
@@ -300,10 +497,10 @@ function jobCard(j) {
   const d = j.details || {};
   const narration = j.kind === "narrate";
   card.append(head, el("h3", nameOf(j)));
-  if (!d.title) card.append(el("p", "The phone app that sent it does not tell the server the story's name yet.", "muted small"));
+  if (!d.title) card.append(el("p", t("noNameNote"), "muted small"));
   const bar = el("div", null, "bar"), fill = el("div");
   bar.setAttribute("role", "progressbar");
-  bar.setAttribute("aria-label", "Progress of " + nameOf(j));
+  bar.setAttribute("aria-label", t("progressOf", nameOf(j)));
   bar.setAttribute("aria-valuemin", "0");
   bar.setAttribute("aria-valuemax", "100");
   bar.append(fill);
@@ -311,42 +508,40 @@ function jobCard(j) {
   const ready = el("p", "", "why");
   ready.hidden = true;
   card.append(ready);
-  // what went wrong in plain words, when the server knows; the error itself stays with the facts
-  // (without a known cause, the start of what the server reported: a failure is never shown without a reason)
-  if (j.state === "failed" && (j.errorHint || j.error)) {
-    card.append(el("p", j.errorHint || "The server reported: " + (j.error.length > 220 ? j.error.slice(0, 220) + " …" : j.error), "hint"));
-  }
+  if (j.state === "failed" && whyFailed(j)) card.append(el("p", whyFailed(j), "hint"));
   const buttons = el("div", null, "row");
   const at = "/v1/jobs/" + encodeURIComponent(j.id);
-  if (j.can.continue) buttons.append(actionButton("Continue", "primary", () => api("POST", at + "/continue")));
-  if (j.can.hold) buttons.append(actionButton("Put on hold", "", () => api("POST", at + "/hold")));
-  if (j.can.delete) buttons.append(actionButton("Delete", "danger", async () => {
-    if (confirm("Delete this " + (narration ? "narration" : "sync") + " and everything made for it so far?\n\nThis cannot be undone.")) {
-      await api("DELETE", at);
-    }
+  if (j.can.continue) buttons.append(actionButton(t("continue"), "primary", () => api("POST", at + "/continue")));
+  if (j.can.hold) buttons.append(actionButton(t("hold"), "", () => api("POST", at + "/hold")));
+  if (j.can.delete) buttons.append(actionButton(t("delete"), "danger", async () => {
+    if (confirm(t(narration ? "confirmNarr" : "confirmSync"))) await api("DELETE", at);
   }));
   if (buttons.childElementCount) card.append(buttons);
-  else if (j.state === "running") card.append(el("p", "A sync cannot be put on hold or deleted while it runs: it has no place to stop and pick up again. It ends by itself, usually within minutes.", "muted small why"));
-  if (j.state === "held") card.append(el("p", "Nothing works on it. Continue it here, or answer the question the server asks when it starts.", "muted small why"));
+  else if (j.state === "running") card.append(el("p", t("syncBusy"), "muted small why"));
+  if (j.state === "held") card.append(el("p", t("heldNote"), "muted small why"));
   const more = el("details", null, "more");
-  more.append(el("summary", "Details"));
+  more.append(el("summary", t("details")));
   more.open = factsOpen.has(j.id) ? factsOpen.get(j.id) : wide();
   more.addEventListener("toggle", () => factsOpen.set(j.id, more.open));
   const dl = el("dl", null, "facts");
-  fact(dl, "What", narration ? "Narration: the server reads the text aloud" : "Sync: an audiobook lined up with its text");
-  if (d.beginning) fact(dl, "Begins", "“" + d.beginning + " …”");
-  fact(dl, "Language", d.language);
-  if (d.words) fact(dl, "Length", count(d.words) + " words" + (d.audioSecondsAbout ? ", about " + duration(d.audioSecondsAbout) + " of audio" : ""));
-  if (narration) fact(dl, "Voices", d.narrators ? d.narrators + " narrators told by " + d.voices + " voices" : "one voice");
-  const live = { pieces: liveFact(dl, "Pieces of audio") };
-  if (d.sent) fact(dl, "Sent", when(d.sent) + (d.device ? ", from " + d.device : ""));
-  live.last = liveFact(dl, "Last worked on");
-  live.size = liveFact(dl, "On disk");
-  if (j.state === "failed" && j.error) fact(dl, "Error", j.error);
+  fact(dl, t("fWhat"), t(narration ? "whatNarr" : "whatSync"));
+  if (d.beginning) fact(dl, t("fBegins"), "“" + d.beginning + " …”");
+  fact(dl, t("fLanguage"), languageName(d.language));
+  if (d.words) fact(dl, t("fLength"), d.audioSecondsAbout ? t("wordsAudio", count(d.words), duration(d.audioSecondsAbout))
+                                                         : t("words", count(d.words)));
+  if (narration) fact(dl, t("fVoices"), d.narrators ? t("voicesMany", d.narrators, d.voices) : t("voiceOne"));
+  const live = { pieces: liveFact(dl, t("fPieces")) };
+  if (d.sent) fact(dl, t("fSent"), d.device ? t("sentFrom", when(d.sent), d.device) : when(d.sent));
+  live.last = liveFact(dl, t("fLast"));
+  live.size = liveFact(dl, t("fDisk"));
+  if (j.state === "failed" && j.error) fact(dl, t("fError"), j.error);
   more.append(dl);
   card.append(more);
   return { card, numbers, fill, bar, ready, live };
 }
+
+// the server names a story's language in English
+const languageName = name => name && TEXTS.en["lang_" + name] ? t("lang_" + name) : name;
 
 // Finished jobs: how much room they take, and a way to delete each. The list is built again only
 // when it changes, so a button is not swapped away while it is being pressed.
@@ -358,27 +553,25 @@ function showDone(list) {
   if (shape === doneShape) return;
   doneShape = shape;
   const total = list.reduce((sum, j) => sum + ((j.details || {}).bytes || 0), 0);
-  $("doneSummary").textContent = (list.length === 1 ? "1 finished job is" : count(list.length) + " finished jobs are")
-    + " kept on this computer" + (total ? ", taking " + size(total) + "." : ".");
-  $("doneMore").firstElementChild.textContent = list.length === 1 ? "Show it" : "Show them";
+  $("doneSummary").textContent = (list.length === 1 ? t("done1") : t("doneN", count(list.length)))
+    + (total ? t("taking", size(total)) : ".");
+  $("doneMore").firstElementChild.textContent = t(list.length === 1 ? "showIt" : "showThem");
   const box = $("done");
   box.replaceChildren();
   for (const j of list) {
     const d = j.details || {}, narration = j.kind === "narrate";
     const row = el("div", null, "done-row"), text = el("div");
     text.append(el("div", nameOf(j), "state"),
-                el("div", [narration ? "Narration" : "Sync", d.language, d.bytes ? size(d.bytes) : null,
-                           d.lastWorked ? "finished " + when(d.lastWorked) : null].filter(Boolean).join(" · "), "muted small"));
+                el("div", [t(narration ? "narration" : "sync"), languageName(d.language), d.bytes ? size(d.bytes) : null,
+                           d.lastWorked ? t("finishedAt", when(d.lastWorked)) : null].filter(Boolean).join(" · "), "muted small"));
     row.append(text);
     if (j.can.delete) {
-      const b = actionButton("Delete", "danger", async () => {
-        if (confirm("Delete the finished " + (narration ? "narration" : "sync") + " “" + nameOf(j) + "” from this computer?\n\n"
-                    + "The story stays on the phone if the phone has already downloaded it. If it has not, it has "
-                    + "to be sent again from the app, and the work is done again.\n\nThis cannot be undone.")) {
+      const b = actionButton(t("delete"), "danger", async () => {
+        if (confirm(t(narration ? "confirmDoneNarr" : "confirmDoneSync", nameOf(j)))) {
           await api("DELETE", "/v1/jobs/" + encodeURIComponent(j.id));
         }
       });
-      b.setAttribute("aria-label", "Delete " + nameOf(j));
+      b.setAttribute("aria-label", t("deleteNamed", nameOf(j)));
       row.append(b);
     }
     box.append(row);
@@ -390,16 +583,19 @@ function fact(dl, name, value) {
   dl.append(el("dt", name), el("dd", String(value)));
 }
 
+let lastHealth = null;
+
 async function refresh() {
   clearTimeout(timer);
   try {
     const [health, jobs] = await Promise.all([api("GET", "/v1/health"), api("GET", "/v1/jobs")]);
+    lastHealth = health;
     $("signin").hidden = true;
     $("content").hidden = false;
     $("token").value = "";  // accepted: no longer needed on the page
     lostAt = null;
     showNotice();
-    $("subtitle").textContent = "What " + (health.name || "this computer") + " is working on for your phone.";
+    $("subtitle").textContent = health.name ? t("subtitle", health.name) : t("subtitleDefault");
     const shown = jobs.filter(j => j.state !== "done");
     showJobs(shown);
     showDone(jobs.filter(j => j.state === "done"));
@@ -411,20 +607,58 @@ async function refresh() {
     $("all").hidden = canHold < 2 && onHold < 2;
     const dl = $("facts");
     dl.replaceChildren();
-    fact(dl, "Name", health.name);
-    fact(dl, "Graphics card", health.gpu || "none found");
-    fact(dl, "Voices", Object.entries(health.narration || {}).map(([lang, v]) => lang + ": " + v).join(", "));
+    fact(dl, t("fName"), health.name);
+    fact(dl, t("fGpu"), health.gpu || t("gpuNone"));
+    fact(dl, t("fVoices"), Object.entries(health.narration || {}).map(([lang, v]) => lang + ": " + v).join(", "));
     if (health.freeBytes != null) {
-      fact(dl, "Free disk space", size(health.freeBytes)
-           + (health.freeBytes < 10 * 1073741824 ? ": little is left. A narrated book needs a few GB while it is made" : ""));
+      fact(dl, t("fFree"), health.freeBytes < 10 * 1073741824 ? t("freeLow", size(health.freeBytes)) : size(health.freeBytes));
     }
-    fact(dl, "Version", health.version);
+    fact(dl, t("fVersion"), health.version);
+    $("check").hidden = !health.latestUrl;
   } catch (e) {
-    if (e.status === 401) { showSignIn(token ? "The server does not accept this token." : ""); return; }
-    if (lostAt === null) lostAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (e.status === 401) { showSignIn(token ? t("badToken") : ""); return; }
+    if (lostAt === null) lostAt = new Date().toLocaleTimeString(LANG, { hour: "2-digit", minute: "2-digit" });
     showNotice();
   }
   timer = setTimeout(refresh, 3000);
+}
+
+// ---- a newer version: asked of GitHub only when the button is pressed, from this browser.
+// Versions are numbers with dots; they are compared number by number, so 0.10 comes after 0.9.
+function isNewer(theirs, ours) {
+  const a = String(theirs).split(".").map(n => parseInt(n, 10) || 0), b = String(ours).split(".").map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return false;
+}
+
+async function checkVersion() {
+  const out = $("checkResult");
+  out.hidden = false;
+  out.className = "muted";
+  out.textContent = t("checking");
+  $("check").disabled = true;
+  try {
+    const r = await fetch(lastHealth.latestUrl, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" });
+    if (!r.ok) throw new Error(String(r.status));
+    const latest = await r.json();
+    out.className = "";
+    if (isNewer(latest.version, lastHealth.version)) {
+      out.textContent = t("newer", latest.version, lastHealth.version) + (latest.notes ? " " + t("whatsNew", latest.notes) : "") + " ";
+      const a = el("a", t("howUpdate"));
+      a.href = "https://github.com/alessandrobelli/raccontami-server#updating";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      out.append(a);
+    } else {
+      out.textContent = t("upToDate", lastHealth.version);
+    }
+  } catch (e) {
+    out.className = "error";
+    out.textContent = t("checkFailed");
+  }
+  $("check").disabled = false;
 }
 
 $("tokenForm").addEventListener("submit", ev => {
@@ -438,11 +672,12 @@ for (const [id, path] of [["holdAll", "/v1/hold"], ["continueAll", "/v1/continue
     setRefused("");
     try {
       const r = await api("POST", path);
-      if (r && r.message) setRefused(r.message);
+      if (r && r.message) setRefused(said(r.message));
     } catch (e) { setRefused(e.message); }
     refresh();
   });
 }
+$("check").addEventListener("click", checkVersion);
 $("showToken").addEventListener("change", () => { $("token").type = $("showToken").checked ? "text" : "password"; });
 $("notice").addEventListener("click", () => setRefused(""));
 $("forget").addEventListener("click", () => {

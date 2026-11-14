@@ -40,10 +40,26 @@ def quiet_drops(loop, context) -> None:
     loop.default_exception_handler(context)
 
 
+def use_own_tools(env=None) -> str | None:
+    """Puts the ffmpeg that the one-file setup brought (<home>/tools/ffmpeg/bin) first on the PATH
+    of this server and of what it starts, and returns that folder; None when there is none, and the
+    computer's own ffmpeg is used as before. Done here and not in a start file, so that it also
+    holds for the start without a window."""
+    from . import settings
+
+    env = os.environ if env is None else env
+    folder = settings.home(env) / "tools" / "ffmpeg" / "bin"
+    if not folder.is_dir():
+        return None
+    env["PATH"] = str(folder) + os.pathsep + env.get("PATH", "")
+    return str(folder)
+
+
 def main() -> None:
     from . import settings
 
     settings.load()  # before anything reads a setting: paths.py does when it is imported
+    use_own_tools()
     from .paths import DATA
 
     start = options()
@@ -53,8 +69,10 @@ def main() -> None:
         try:
             cert, key = tls.ensure_certificate(DATA)
             start.update(ssl_certfile=str(cert), ssl_keyfile=str(key))
-            # app.py prints it in its start-up lines
-            os.environ["RACCONTAMI_TLS_CODE"] = tls.short_code(tls.fingerprint(cert))
+            # app.py prints them in its start-up lines: the code, and how older apps show the same code
+            mark = tls.fingerprint(cert)
+            os.environ["RACCONTAMI_TLS_CODE"] = tls.digit_code(mark)
+            os.environ["RACCONTAMI_TLS_CODE_OLD"] = tls.short_code(mark)
         except ImportError:
             # an install from before the encrypted link, updated without its new package
             print('          NOT ENCRYPTED: the "cryptography" package is missing. Run the installer again '
