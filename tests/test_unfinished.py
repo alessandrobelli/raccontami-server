@@ -194,6 +194,42 @@ class UnfinishedTest(unittest.TestCase):
         self.assertFalse(u.interactive(Piped(), Piped()))
 
 
+class DropPiecesTest(unittest.TestCase):
+    """The pieces of a finished narration are deleted; the finished file is what the phone gets."""
+
+    def narration(self, finished=True):
+        d = Path(tempfile.mkdtemp())
+        (d / "pieces").mkdir()
+        (d / "pieces" / "00001.wav").write_bytes(b"x" * 7)
+        if finished:
+            (d / "audio.m4a").write_bytes(b"a")
+            (d / "result.json").write_text("{}")
+        return d
+
+    def test_the_pieces_of_a_finished_narration_are_deleted(self):
+        d = self.narration()
+        u.drop_pieces(d)
+        self.assertFalse((d / "pieces").exists())
+
+    def test_the_room_they_took_is_returned(self):
+        self.assertEqual(7, u.drop_pieces(self.narration()))
+
+    def test_the_finished_file_stays(self):
+        d = self.narration()
+        u.drop_pieces(d)
+        self.assertTrue((d / "audio.m4a").is_file())
+
+    def test_without_the_finished_file_the_pieces_are_kept(self):
+        d = self.narration(finished=False)
+        u.drop_pieces(d)
+        self.assertTrue((d / "pieces" / "00001.wav").is_file())
+
+    def test_nothing_to_delete_frees_nothing(self):
+        d = self.narration()
+        u.drop_pieces(d)
+        self.assertEqual(0, u.drop_pieces(d))
+
+
 class PageFactsTest(unittest.TestCase):
     """What the server's page says about a job besides its progress."""
 

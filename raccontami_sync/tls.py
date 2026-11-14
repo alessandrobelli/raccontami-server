@@ -66,6 +66,14 @@ def fingerprint(cert: Path) -> str:
     return hashlib.sha256(ssl.PEM_cert_to_DER_cert(cert.read_text(encoding="ascii"))).hexdigest()
 
 
+def digit_code(fp: str) -> str:
+    """The start of a fingerprint as digits in groups of four, to compare by eye:
+    "0458 4939 0331 2265 6608". The same 64 bits as the older code in letters and digits
+    (short_code), written as a number of 20 digits: digits are compared with fewer mistakes."""
+    return " ".join(f"{int(fp[:16], 16):020d}"[i:i + 4] for i in range(0, 20, 4))
+
+
 def short_code(fp: str) -> str:
-    """The start of a fingerprint in groups of four, to compare by eye: "3fa9-07c2-b1d4-88e0"."""
+    """The code as apps before version 0.2 show it: "3fa9-07c2-b1d4-88e0". Still said next to the
+    digits, so that an app not yet updated can be paired."""
     return "-".join(fp[i:i + 4] for i in range(0, 16, 4))

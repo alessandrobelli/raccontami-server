@@ -50,6 +50,7 @@ from . import awake, connect_window, narrate, pipeline, single, tray, unfinished
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
+from .version import LATEST, VERSION  # noqa: E402
 
 JOBS = DATA / "jobs"
 JOBS.mkdir(parents=True, exist_ok=True)
@@ -248,6 +249,10 @@ def _load_existing():
         j = JobState(d.name, s["kind"])
         if s["state"] != "done":
             j.partial = read_json(d / "release.json")  # None when there is no part yet, or the file is damaged
+        elif s["kind"] == "narrate":  # finished before pieces were deleted at the end, or stopped right at it
+            freed = unfinished.drop_pieces(d)
+            if freed:
+                log(f"  job {d.name[:8]}: finished; its {freed / 1e6:,.0f} MB of audio pieces deleted, the finished file is kept")
         j.state, j.stage = s["state"], s.get("stage", s["state"])
         j.progress, j.error = float(s.get("progress") or 0.0), s.get("error")
         if choice == unfinished.CONTINUE:  # run again (narrations keep their pieces)
@@ -354,6 +359,12 @@ def _narration_worker():
                 j.state, j.error = "failed", f"{type(e).__name__}: {e}"
                 log(f"{j.label()}: FAILED: {j.error}")
             j.save()
+            # only now that "done" is written down: a stop between the two must not leave a narration
+            # that looks unfinished and has nothing to continue from
+            if j.state == "done":
+                freed = unfinished.drop_pieces(j.dir)
+                if freed:
+                    log(f"{j.label()}: its {freed / 1e6:,.0f} MB of audio pieces deleted; the finished file is kept")
 
 
 def _gpu_name() -> str | None:
@@ -407,8 +418,11 @@ async def _lifespan(_app):
         print(f"          token for the app: {TOKEN}", flush=True)
         log(f"  token for the app: shown above, and in {DATA / 'token.txt'}")
     code = os.environ.get("RACCONTAMI_TLS_CODE")  # set by serve.py when the link is encrypted
+    old_code = os.environ.get("RACCONTAMI_TLS_CODE_OLD")
     if code:
         log(f"  encrypted link: yes. The app shows this code when it connects; check that it is the same: {code}")
+        if old_code:
+            log(f"    (an app from before version 0.2 shows the same code as {old_code})")
     else:
         log("  encrypted link: no (plain HTTP). Others on the same network can read what passes; see the README")
     address = tray.lan_address()
@@ -427,7 +441,7 @@ async def _lifespan(_app):
         "shows the work, and can put it on hold or continue it")
     # the token is read by somebody at this computer, as in the window; with RACCONTAMI_TOKEN there is no file
     icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA,
-                      connect=lambda: connect_window.facts(for_phone, TOKEN, DATA / "token.txt", code))
+                      connect=lambda: connect_window.facts(for_phone, TOKEN, DATA / "token.txt", code, old_code))
     if icon is not None and HIDDEN:  # no window: without a word, a double click would seem to do nothing
         icon.announce("The server is running. This icon opens its page, shows how to connect the phone, and stops it."
                       + (f" {len(held)} unfinished job(s) are kept on hold: continue them from this icon's menu."
@@ -438,7 +452,7 @@ async def _lifespan(_app):
         icon.stop()
 
 
-app = FastAPI(title="Raccontami sync server", version="0.1.0", lifespan=_lifespan)
+app = FastAPI(title="Raccontami sync server", version=VERSION, lifespan=_lifespan)
 # token and size are checked here, before any of a request's body is read (see gate.py)
 MAX_UPLOAD = 4 * 1024 ** 3  # an audiobook; long ones are around 1 GB
 MAX_BODY = 64 * 1024 ** 2  # everything else, the text of a long book included
@@ -459,6 +473,7 @@ def health():
     return {"ok": True, "version": app.version, "name": NAME,
             "gpu": _gpu_name(),
             "freeBytes": _free_bytes(),
+            "latestUrl": LATEST,  # for the page's "Check for a newer version": asked only when pressed
             "queue": work.qsize(), "languages": sorted(pipeline.ALIGN_MODELS),
             "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()},
             # the voices a narrator can be given, per language (none: one voice only)
@@ -788,6 +803,7 @@ def list_jobs():
         status = {"state": j.state, "kind": j.kind}
         out.append({**j.view(), "about": j.about, "details": details, "holding": j.hold,
                     "errorHint": unfinished.explain(j.error) if j.state == "failed" else None,
+                    "errorCause": unfinished.cause(j.error) if j.state == "failed" else None,
                     "can": {"hold": j.state == "queued" or (j.state == "running" and j.kind == "narrate" and not j.hold),
                             "continue": unfinished.can_continue(j.dir, status),
                             "delete": unfinished.can_delete(status)}})

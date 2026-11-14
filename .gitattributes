@@ -1,0 +1,3 @@
+# a batch file is read by cmd.exe as it is stored: kept with Windows line ends, also when downloaded from GitHub
+*.cmd -text
+*.bat -text

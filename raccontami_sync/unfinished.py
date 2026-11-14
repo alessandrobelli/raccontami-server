@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -33,6 +34,19 @@ def pieces_done(job: Path) -> int:
     return sum(1 for _ in d.glob("*.wav")) if d.is_dir() else 0
 
 
+def drop_pieces(job: Path) -> int:
+    """Deletes the pieces of audio a finished narration was put together from, and returns the bytes
+    freed. They are several times the size of the finished file and nothing reads them again: the
+    phone gets audio.m4a and result.json. Kept when the finished file is not there, whatever the
+    status says: then the pieces are all there is."""
+    pieces = job / "pieces"
+    if not pieces.is_dir() or not (job / "audio.m4a").is_file() or not (job / "result.json").is_file():
+        return 0
+    freed = folder_bytes(pieces)
+    shutil.rmtree(pieces, ignore_errors=True)
+    return freed
+
+
 def folder_bytes(job: Path) -> int:
     """How much disk a job takes. A file that goes away while it is counted is simply not counted."""
     total = 0
@@ -45,17 +59,18 @@ def folder_bytes(job: Path) -> int:
     return total
 
 
-# what a failure usually means, and what to do: the raw error is for whoever reads the log
+# what a failure usually means, and what to do: the raw error is for whoever reads the log.
+# (name of the cause for the page, which says it in the reader's language; marks; the meaning in English)
 _CAUSES = (
-    (("out of memory",), "The graphics card ran out of memory. Close what else is using it (a game, another "
+    ("memory", ("out of memory",), "The graphics card ran out of memory. Close what else is using it (a game, another "
                          "AI program) and continue; on a card under 12 GB, set RACCONTAMI_ONE_JOB=1 in settings.txt."),
-    (("no space left on device", "errno 28", "not enough space on the disk"),
+    ("disk", ("no space left on device", "errno 28", "not enough space on the disk"),
      "The disk is full. Delete finished jobs below, or free space on the drive, then continue."),
-    (("failed to load audio", "invalid data found when processing input"),
+    ("audio", ("failed to load audio", "invalid data found when processing input"),
      "The audio file could not be read. Try it in a player; if it plays, convert it to MP3 or M4A and send it again."),
-    (("cuda error", "no kernel image is available", "found no nvidia driver", "cuda driver"),
+    ("driver", ("cuda error", "no kernel image is available", "found no nvidia driver", "cuda driver"),
      "The graphics card or its driver did not answer. Update the NVIDIA driver, restart the computer, and continue."),
-    (("connectionerror", "getaddrinfo failed", "failure in name resolution", "max retries exceeded"),
+    ("network", ("connectionerror", "getaddrinfo failed", "failure in name resolution", "max retries exceeded"),
      "A model could not be downloaded. Check the internet connection of this computer and continue."),
 )
 
@@ -66,10 +81,16 @@ def explain(error: str | None) -> str | None:
     Whole phrases of the error messages themselves, never single words: an error often carries the
     last lines of a log, and a file path through "torch\\cuda" or "huggingface_hub" says nothing
     about the cause. A wrong explanation is worse than none."""
+    found = cause(error)
+    return next(meaning for name, _marks, meaning in _CAUSES if name == found) if found else None
+
+
+def cause(error: str | None) -> str | None:
+    """The name of a failure's cause ("memory", "disk", "audio", "driver", "network"), or None."""
     text = (error or "").lower()
-    for marks, meaning in _CAUSES:
+    for name, marks, _meaning in _CAUSES:
         if any(mark in text for mark in marks):
-            return meaning
+            return name
     return None
 
 

@@ -13,7 +13,8 @@ param(
     [string]$RaccontamiHome = "$env:USERPROFILE\raccontami",
     [switch]$SkipModels,        # do not download the models now (they download on first use)
     [switch]$SkipPhoneModels,   # do not build the models the app downloads for syncing on the phone
-    [switch]$NoQuestions        # do not ask about the firewall and starting at login (the last lines say how)
+    [switch]$NoQuestions,       # do not ask about the firewall and starting at login (the last lines say how)
+    [string]$Python             # the python.exe (3.12) to make the environments with; without it, the py launcher's
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -24,13 +25,22 @@ function Step($m) { Write-Host "`n== $m" -ForegroundColor Cyan }
 function Fail($m) { Write-Host "`n$m" -ForegroundColor Red; exit 1 }
 
 Step "Checking the computer"
-try { $py = (& py -3.12 -c "import sys; print(sys.executable)") } catch { $py = $null }
-if (-not $py) { Fail "Python 3.12 not found. Install it from python.org (tick 'Add to PATH'), then run this again." }
-Write-Host "Python 3.12: $py"
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-    Fail "ffmpeg not found. Install it (winget install Gyan.FFmpeg), open a new terminal and run this again."
+$setupHint = "Or use the one-file setup, which brings its own: see the README."
+if ($Python) {
+    # given by the one-file setup (install\setup.ps1), which brought a Python of the server's own
+    try { $py = (& $Python -c "import sys; print(sys.executable if sys.version_info[:2] == (3, 12) else '')") } catch { $py = $null }
+    if (-not $py) { Fail "$Python is not a Python 3.12." }
+} else {
+    try { $py = (& py -3.12 -c "import sys; print(sys.executable)") } catch { $py = $null }
+    if (-not $py) { Fail "Python 3.12 not found. Install it from python.org (tick 'Add to PATH'), then run this again. $setupHint" }
 }
-Write-Host "ffmpeg: ok"
+Write-Host "Python 3.12: $py"
+# an ffmpeg brought by the one-file setup is in the home folder; the server looks there too when it starts
+if (Test-Path "$H\tools\ffmpeg\bin\ffmpeg.exe") { $env:PATH = "$H\tools\ffmpeg\bin;$env:PATH" }
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    Fail "ffmpeg not found. Install it (winget install Gyan.FFmpeg), open a new terminal and run this again. $setupHint"
+}
+Write-Host "ffmpeg: $((Get-Command ffmpeg).Source)"
 try { $gpu = (& nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader) } catch { $gpu = $null }
 if (-not $gpu) { Fail "No NVIDIA GPU found (nvidia-smi). Install the latest NVIDIA driver." }
 Write-Host "GPU: $gpu"
@@ -66,7 +76,7 @@ $env:RACCONTAMI_HOME = $H
 function Ensure-Env($dir, $requirements, $label) {
     Step "Python environment: $label ($dir)"
     $python = "$dir\Scripts\python.exe"
-    if (-not (Test-Path $python)) { & py -3.12 -m venv $dir; if ($LASTEXITCODE) { Fail "Could not create $dir" } }
+    if (-not (Test-Path $python)) { & $py -m venv $dir; if ($LASTEXITCODE) { Fail "Could not create $dir" } }
     & $python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() and torch.__version__.startswith('2.11') else 1)" 2>$null
     if ($LASTEXITCODE) {
         Write-Host "installing PyTorch with CUDA (about 3 GB; the bar below shows the download)..."
