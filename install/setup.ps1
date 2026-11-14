@@ -30,7 +30,9 @@ $UvZip = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-
 $FfmpegZip = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
 function Step($m) { Write-Host "`n== $m" -ForegroundColor Cyan }
-function Fail($m) { Write-Host "`n$m" -ForegroundColor Red; throw "setup stopped" }
+$Stopped = "The setup did not finish. It can be run again: what is done is kept."
+# not "exit": started with irm | iex this runs inside the reader's own PowerShell, which exit would close
+function Fail($m) { Write-Host "`n$m" -ForegroundColor Red; throw $Stopped }
 
 function Get-File($url, $to) {
     # curl comes with Windows 10 and 11, shows how far a download is, and is quick
@@ -161,7 +163,7 @@ if (Test-Path (Join-Path $ffmpegBin "ffmpeg.exe")) {
     $exe = Get-ChildItem (Join-Path $tmp "ffmpeg") -Recurse -Filter ffmpeg.exe | Select-Object -First 1
     if (-not $exe) { Fail "ffmpeg.exe was not in the download. Run this again." }
     New-Item -ItemType Directory -Force $ffmpegBin | Out-Null
-    Copy-Item (Join-Path $exe.DirectoryName "*.exe") $ffmpegBin
+    Copy-Item $exe.FullName $ffmpegBin   # ffmpeg alone: the player and the prober beside it are not used, and are 200 MB
 }
 Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 
@@ -174,4 +176,4 @@ if ($OnlyTools) {
 $installer = Join-Path $code "install\install-windows.ps1"
 & $installer -RaccontamiHome $H -Python $python -NoQuestions:$NoQuestions
 # the installer says why it stopped; passed on, so that the window that started this says it did not finish
-if ($LASTEXITCODE) { throw "the installer stopped" }
+if ($LASTEXITCODE) { throw $Stopped }
