@@ -46,7 +46,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import awake, narrate, pipeline, single, tray, unfinished  # noqa: E402
+from . import awake, connect_window, narrate, pipeline, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
@@ -413,7 +413,7 @@ async def _lifespan(_app):
         "shows the work, and can put it on hold or continue it")
     # the token is read by somebody at this computer, as in the window; with RACCONTAMI_TOKEN there is no file
     icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA,
-                      connect=lambda: tray.connect_text(for_phone, DATA / "token.txt", code, token=TOKEN))
+                      connect=lambda: connect_window.facts(for_phone, TOKEN, DATA / "token.txt", code))
     if icon is not None and HIDDEN:  # no window: without a word, a double click would seem to do nothing
         icon.announce("The server is running. This icon opens its page, shows how to connect the phone, and stops it."
                       + (f" {len(held)} unfinished job(s) are kept on hold: continue them from this icon's menu."

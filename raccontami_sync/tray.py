@@ -51,25 +51,18 @@ def lan_address() -> str | None:
         return None
 
 
-def connect_text(url: str | None, token_file, code: str | None, token: str | None = None) -> str:
-    """What the app asks for when it connects: the address, the token and, with the encrypted link,
-    the code to compare. It is what the server's window shows at the start, for a server without one."""
-    lines = ["In the app: Settings, then the server's settings.", ""]
-    lines.append(f"Address:  {url}" if url else "Address:  this computer's address on your network, with port 8765")
-    lines.append("(or tap \"Search local network\" in the app)")
-    lines += ["", f"Token:  {token}" if token else f"Token:  in {token_file}"]
-    if code:
-        lines += ["", f"Code:  {code}", "The app shows a code when it connects. Confirm only if it is this one."]
-    else:
-        lines += ["", "The link is not encrypted (RACCONTAMI_TLS=0): there is no code to compare."]
-    return "\n".join(lines)
+def _show_connect(rows, server: str, log) -> None:
+    """The window with what the app asks for (connect_window.py); a plain box with the same text
+    when that window cannot be shown."""
+    from . import connect_window
 
+    try:
+        connect_window.show(rows, server, icon=image("working"))
+    except Exception as e:  # noqa: BLE001  no tkinter in this Python, or no desktop
+        log(f"  icon: the Connect window could not be shown ({type(e).__name__}: {e}); a plain box instead")
+        import ctypes
 
-def _show(text: str) -> None:
-    """A box with the text and an OK button, in front of the other windows."""
-    import ctypes
-
-    ctypes.windll.user32.MessageBoxW(None, text, "Raccontami server", 0x40 | 0x10000)
+        ctypes.windll.user32.MessageBoxW(None, connect_window.as_text(rows), "Raccontami server", 0x40 | 0x10000)
 
 
 def why_not(platform=None, env=None) -> str | None:
@@ -103,7 +96,7 @@ class Tray:
         self.name, self.summary, self.can = name, summary, can
         self.hold_all, self.continue_all, self.quit_server, self.log = hold_all, continue_all, quit_server, log
         self.folder = folder  # where the token and the log are
-        self.connect = connect  # () -> what the app asks for (connect_text): the window's lines, without a window
+        self.connect = connect  # () -> what the app asks for, as connect_window.facts() gives it
         self.done = threading.Event()
         self.icon = None
         self.kind = None
@@ -141,9 +134,10 @@ class Tray:
             Item(lambda item: self.summary()[1], None, enabled=False),
             pystray.Menu.SEPARATOR,
             Item("Open the server's page", lambda icon, item: webbrowser.open(self.url), default=True),
-            # in a thread of its own: the box stays open as long as the reader needs it, and the icon goes on
+            # in a thread of its own: the window stays open as long as the reader needs it, and the icon goes on
             Item("Connect the phone (address, token, code)",
-                 lambda icon, item: threading.Thread(target=_show, args=(self.connect(),), daemon=True).start(),
+                 lambda icon, item: threading.Thread(target=_show_connect, args=(self.connect(), self.name, self.log),
+                                                     daemon=True).start(),
                  visible=self.connect is not None),
             Item("Put everything on hold", act(self.hold_all), enabled=lambda item: self.can()["hold"]),
             Item("Continue what is on hold", act(self.continue_all), enabled=lambda item: self.can()["continue"]),
