@@ -26,17 +26,9 @@ same steps but have not been run on real hardware yet; reports welcome.
 | GPU | NVIDIA, 8 GB with `RACCONTAMI_ONE_JOB=1` | 12–16 GB |
 | Driver | 570 or newer (it brings CUDA 12.8; required for RTX 50) | latest |
 | Disk | 35 GB | 50 GB on a fast drive, plus room for finished work (see [Disk space](#disk-space)) |
-| Software | Python 3.12, ffmpeg, git | |
+| Software | Windows: nothing, the setup brings its own. Linux: Python 3.12, ffmpeg, git | |
 
-On Windows, the three programs install from PowerShell; open a new terminal afterwards:
-
-```powershell
-winget install Python.Python.3.12
-winget install Gyan.FFmpeg
-winget install Git.Git
-```
-
-The installer checks the driver, the free space, Python and ffmpeg before it downloads anything.
+The setup checks the driver and the free space before it downloads anything.
 
 ## Install
 
@@ -45,12 +37,18 @@ installers download about 35 GB and are safe to stop and run again: they only ad
 
 ### Windows
 
-1. In PowerShell:
-   ```powershell
-   git clone https://github.com/alessandrobelli/raccontami-server
-   cd raccontami-server
-   powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -RaccontamiHome D:\raccontami
-   ```
+1. Start the setup, in one of two ways:
+   - Open **PowerShell** (Start menu, type "PowerShell") and paste this line:
+     ```powershell
+     irm https://raw.githubusercontent.com/alessandrobelli/raccontami-server/main/install/setup.ps1 | iex
+     ```
+   - Or download [Install Raccontami server.cmd](https://github.com/alessandrobelli/raccontami-server/raw/main/Install%20Raccontami%20server.cmd)
+     and double-click it. Windows warns about a file from the internet that it does not know:
+     choose **More info**, then **Run anyway**. The first way has no such warning.
+
+   The setup asks where to put everything, then brings what the computer does not have: the
+   server's code, a Python of its own and ffmpeg. All of it goes into that one folder, nothing is
+   installed in Windows itself, and no administrator is needed for it.
 2. At the end the installer asks three questions. Yes to all three is the usual answer; a no can
    be changed later, and its last lines say how.
    - **May phones on your home network reach the server?** It adds a Windows firewall rule, for
@@ -59,8 +57,16 @@ installers download about 35 GB and are safe to stop and run again: they only ad
    - **Start the server now?** Its window opens.
 3. Go on with [Connect the app](#connect-the-app).
 
-To start the server yourself, double-click `D:\raccontami\start-server.bat`, or
-`Raccontami server (no window)` in the same folder.
+To start the server yourself, double-click `start-server.bat` in the folder you chose, or
+`Raccontami server (no window)` beside it.
+
+With git, Python 3.12 and ffmpeg already installed, the installer can also be run from a clone:
+
+```powershell
+git clone https://github.com/alessandrobelli/raccontami-server
+cd raccontami-server
+powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -RaccontamiHome D:\raccontami
+```
 
 ### Linux
 
@@ -114,9 +120,11 @@ can be copied.
 1. On the phone, on the same Wi-Fi, open **Settings**, then the server's settings.
 2. Tap **Search local network** and pick your server. (Or type the **address** the server shows,
    like `https://192.168.1.20:8765`.)
-3. The app shows a **code**, like `3fa9-07c2-b1d4-88e0`. Compare it with the server's. The same:
-   confirm. Different: something between the phone and the computer is pretending to be the server;
-   do not confirm.
+3. The app shows a **code** of twenty digits, like `0458 4939 0331 2265 6608`. Compare it with the
+   server's. The same: confirm. Different: something between the phone and the computer is
+   pretending to be the server; do not confirm. (Until version 0.2 the same code was written with
+   letters, like `3fa9-07c2-b1d4-88e0`. The app and the server each show both forms, so one that
+   is not yet updated can still be paired with one that is.)
 4. Enter the **token**, the server's password, and tap **Test and save**. The app answers with the
    server's name and graphics card.
 
@@ -130,6 +138,8 @@ The app uses the server's name in its messages ("Narrate it on Studio PC"). Chan
 Open the server's address in a browser and type the token once. On the same computer that is
 `https://localhost:8765/`; the browser warns once, because the certificate is the server's own.
 The page shows what the server is working on. Each job can be put on hold, continued or deleted.
+It is in English, Italian or Turkish: it follows the browser, and the three names at its foot
+switch it.
 
 - **On hold** stops a narration within seconds and keeps every finished piece. It is the way to
   leave the graphics card to something else for a while without stopping the server.
@@ -178,28 +188,28 @@ the book or 10 minutes, then doubling), so listening can start within minutes.
 
 ### Disk space
 
-A finished sync keeps the audiobook that was sent. A finished narration keeps every piece of audio
-it made, about 200–350 MB per narrated hour, of which the final file is about 30 MB. Kept jobs are
-answered at once when the same story is sent again. The phone has its own copy once it has
+A finished sync keeps the audiobook that was sent. A finished narration keeps its final file, about
+30 MB per narrated hour; while it is being made it also holds its pieces of audio, about 200–350 MB
+per hour, which are deleted when it is finished. Kept jobs are answered at once when the same story
+is sent again. The phone has its own copy once it has
 downloaded a story, so jobs for books already on the phone can be deleted: on the page, under
 **Finished**.
 
 ### Updating
 
-Stop the server, then:
+The server's page says which version it is, and **Check for a newer version** there asks GitHub
+whether there is a later one. It asks only when the button is pressed; the server itself never
+looks.
 
-```powershell
-cd raccontami-server
-git pull
-powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -RaccontamiHome D:\raccontami
-```
-
-(on Linux, `git pull` and the install script again). Your settings, token, certificate and jobs are
-kept.
+To update, stop the server and run the setup again, the same way as the first time, with the same
+folder. It brings the new code and adds what is missing. Your settings, token, certificate and
+jobs are kept. With a git clone instead: `git pull`, then the install script again (the same on
+Linux).
 
 ### Removing it
 
-Stop the server and delete the home folder and the `raccontami-server` folder. On Windows, also
+Stop the server and delete the home folder (and the `raccontami-server` clone, if you made one).
+The Python and the ffmpeg that the setup brought are inside the home folder and go with it. On Windows, also
 delete the shortcut in `shell:startup` (Win+R) if you had it start at login, and the firewall rule
 "Raccontami 8765" in *Windows Defender Firewall with Advanced Security → Inbound Rules*.
 
