@@ -43,6 +43,10 @@
           background: var(--page); color: var(--text); }
   label { display: block; font-weight: 600; margin-bottom: 6px; }
   .error { color: var(--danger); margin-top: 8px; }
+  /* what went wrong stays in view while the page is scrolled: the button pressed may be far down */
+  .notice { position: sticky; top: 8px; z-index: 1; margin-top: 16px; padding: 10px 14px; border-radius: 10px;
+            background: var(--surface); border: 1px solid var(--danger); color: var(--danger); font-weight: 600; }
+  .stale { opacity: .55; }
   .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; }
   .facts dt { color: var(--muted); }
   .facts dd { margin: 0; overflow-wrap: anywhere; }
@@ -53,6 +57,7 @@
 <main>
   <h1><span>Raccontami</span> server</h1>
   <p class="muted" id="subtitle">What this computer is working on for your phone.</p>
+  <p class="notice" id="notice" role="status" hidden></p>
 
   <section id="signin" hidden>
     <h2>Token</h2>
@@ -70,20 +75,20 @@
 
   <section id="content" hidden>
     <h2>Work</h2>
-    <div class="row" id="all" style="margin-bottom:12px" hidden>
-      <button id="holdAll" type="button">Put everything on hold</button>
-      <button id="continueAll" type="button">Continue what is on hold</button>
+    <div id="work">
+      <div class="row" id="all" style="margin-bottom:12px" hidden>
+        <button id="holdAll" type="button">Put everything on hold</button>
+        <button id="continueAll" type="button">Continue what is on hold</button>
+      </div>
+      <div id="jobs"></div>
+      <p class="muted" id="none" hidden>Nothing to do: no story is waiting or being worked on.</p>
     </div>
-    <div id="jobs"></div>
-    <p class="muted" id="none" hidden>Nothing to do: no story is waiting or being worked on.</p>
-    <p class="error" id="actionError" hidden></p>
 
     <h2>This server</h2>
     <div class="card">
       <dl class="facts" id="facts"></dl>
       <div class="row" style="margin-top:14px"><button id="forget" type="button">Forget the token in this browser</button></div>
     </div>
-    <p class="muted small" id="lost" hidden>The server does not answer. It may be stopped; this page tries again by itself.</p>
   </section>
 </main>
 
@@ -140,8 +145,28 @@ function stateText(j) {
   }
 }
 
+// One line at the top for what the reader must know now: the server is gone (then what is shown
+// below is old, and is dimmed and cannot be pressed), or the last thing asked for was refused.
+let refused = "", lostAt = null;
+
+function showNotice() {
+  const lost = lostAt !== null;
+  const text = lost
+    ? "The server does not answer since " + lostAt + ". It may be stopped or starting. "
+      + ($("content").hidden ? "" : "What is shown below is from then. ") + "This page tries again by itself."
+    : refused;
+  $("notice").textContent = text;
+  $("notice").hidden = !text;
+  $("work").classList.toggle("stale", lost);
+  $("work").inert = lost;
+}
+
+function setRefused(message) { refused = message || ""; showNotice(); }
+
 function showSignIn(message) {
   clearTimeout(timer);
+  lostAt = null;
+  setRefused("");
   $("content").hidden = true;
   $("signin").hidden = false;
   $("tokenError").hidden = !message;
@@ -154,11 +179,8 @@ function actionButton(label, cls, run) {
   b.type = "button";
   b.addEventListener("click", async () => {
     b.disabled = true;
-    $("actionError").hidden = true;
-    try { await run(); } catch (e) {
-      $("actionError").textContent = e.message;
-      $("actionError").hidden = false;
-    }
+    setRefused("");
+    try { await run(); } catch (e) { setRefused(e.message); }
     refresh();
   });
   return b;
@@ -267,7 +289,8 @@ async function refresh() {
     const [health, jobs] = await Promise.all([api("GET", "/v1/health"), api("GET", "/v1/jobs")]);
     $("signin").hidden = true;
     $("content").hidden = false;
-    $("lost").hidden = true;
+    lostAt = null;
+    showNotice();
     $("subtitle").textContent = "What " + (health.name || "this computer") + " is working on for your phone.";
     const shown = jobs.filter(j => j.state !== "done");
     const finished = jobs.length - shown.length;
@@ -287,7 +310,8 @@ async function refresh() {
     fact(dl, "Version", health.version);
   } catch (e) {
     if (e.status === 401) { showSignIn(token ? "The server does not accept this token." : ""); return; }
-    $("lost").hidden = false;
+    if (lostAt === null) lostAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    showNotice();
   }
   timer = setTimeout(refresh, 3000);
 }
@@ -301,11 +325,11 @@ $("tokenForm").addEventListener("submit", ev => {
 });
 for (const [id, path] of [["holdAll", "/v1/hold"], ["continueAll", "/v1/continue"]]) {
   $(id).addEventListener("click", async () => {
-    $("actionError").hidden = true;
+    setRefused("");
     try {
       const r = await api("POST", path);
-      if (r && r.message) { $("actionError").textContent = r.message; $("actionError").hidden = false; }
-    } catch (e) { $("actionError").textContent = e.message; $("actionError").hidden = false; }
+      if (r && r.message) setRefused(r.message);
+    } catch (e) { setRefused(e.message); }
     refresh();
   });
 }

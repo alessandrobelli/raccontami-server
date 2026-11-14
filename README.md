@@ -30,7 +30,8 @@ hold; it ends by itself, usually within minutes.
 
 On Windows the server also puts an icon next to the clock (Windows may keep it behind the small
 arrow there). Its colour says whether the server is working, on hold or idle; a click opens the
-page; its menu puts everything on hold, continues it, or stops the server. Stopping it from there
+page; its menu shows what the app asks for when it connects (address, token and code), puts
+everything on hold, continues it, or stops the server. Stopping it from there
 leaves a narration in progress to be asked about at the next start, instead of marked as failed.
 `RACCONTAMI_TRAY=0` switches the icon off; without it the server works the same.
 
@@ -38,8 +39,13 @@ The Windows installer also makes a shortcut that starts the server without a win
 (`pythonw -m raccontami_sync.background`): it then lives next to the clock only, so there is no
 window to close by mistake in the middle of a narration. Started this way it does not take the
 graphics card by itself: unfinished work is kept on hold and the icon says so, until it is
-continued from the icon or the page. The token is in `server-data/token.txt` (the icon's menu opens
-that folder), and what the window would have shown is in `server-data/window.log`.
+continued from the icon or the page. A notification says that it has started. The address, the
+token and the pairing code are under **Connect the phone** in the icon's menu, and what the window
+would have shown is in `server-data/window.log`.
+
+While a sync or a narration runs, the server keeps Windows from going to sleep by itself; when the
+work ends or is put on hold, the computer sleeps as usual. Closing a laptop's lid still puts it to
+sleep: the narration then continues when it wakes. `RACCONTAMI_KEEP_AWAKE=0` switches this off.
 
 While a long book is narrated, the finished
 beginning is published in growing parts (a quarter of the book or 10 minutes, then doubling),
@@ -59,7 +65,7 @@ VoxCPM2 ~6.5 GB (Italian voice), Qwen3-TTS ~5 GB (English voice). Models leave t
 after 10 idle minutes.
 
 A sync and a narration run at the same time, which together take up to ~12 GB. On a smaller
-GPU set `RACCONTAMI_ONE_JOB=1` (a commented line is ready in the start script): jobs then take
+GPU set `RACCONTAMI_ONE_JOB=1` (a line is ready in `settings.txt`, see [Settings](#settings)): jobs then take
 turns, and Whisper leaves the GPU when a narration starts. The cost is waiting: an audiobook
 sent while a book is being narrated starts only when the narration ends, which can be hours.
 
@@ -78,11 +84,13 @@ cd raccontami-server
 powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -RaccontamiHome D:\raccontami
 ```
 
-Then double-click `D:\raccontami\start-server.bat`. The script prints how to open the
-firewall port for your network and how to start the server at login.
+At the end the installer asks two questions: whether phones on your home network may reach the
+server (it adds a Windows firewall rule, for which Windows asks an administrator's permission), and
+whether the server should start by itself at login. Answering no is fine: its last lines say how to
+do either later.
 
-A computer that goes to sleep stops narrating, and continues when it wakes. For a long book,
-set **Settings → System → Power → Sleep** to *Never* while plugged in.
+Then double-click `D:\raccontami\start-server.bat`. Its window shows the address, the token and the
+code the app asks for.
 
 ### Linux
 
@@ -131,14 +139,15 @@ time it starts and keeps it in its data folder. Nobody vouches for a computer at
 does not ask who signed the certificate: it remembers the one it was paired with.
 
 - **Pairing.** When the app first connects, it shows a short code, like `3fa9-07c2-b1d4-88e0`. The
-  server's window shows its code when it starts. Check that they are the same, then confirm in the
+  server's window shows its code when it starts; without a window, it is under **Connect the phone**
+  in the menu of the icon next to the clock. Check that they are the same, then confirm in the
   app. If they differ, something between the phone and the computer is pretending to be the server:
   do not confirm.
 - **After an update from a version without the encrypted link**, run the installer again (it adds a
   package and a new start file). The server then answers on `https://`, and the app has to be paired
   once: change the address in the app from `http://` to `https://`, or search the network again.
 - **An app older than the encrypted link** cannot connect to an encrypted server. Update the app, or
-  set `RACCONTAMI_TLS=0` in the start file to stay on plain HTTP for now.
+  set `RACCONTAMI_TLS=0` in `settings.txt` to stay on plain HTTP for now.
 - **Plain HTTP** (`RACCONTAMI_TLS=0`): anyone on the same network can read the token and the text as
   they pass, and then use the server with that token. Use it only on a network you trust, or behind
   something that encrypts for you: [Tailscale](https://tailscale.com) between the computer and the
@@ -192,9 +201,15 @@ example. `tools/prefetch.py` downloads only the models in the table.
 The included Italian voice sample was generated by VoxCPM2 itself; it is not a recording of a
 real person.
 
-## Settings (environment variables)
+## Settings
 
-`RACCONTAMI_TLS=0` turns the encrypted link off (plain HTTP); `RACCONTAMI_HOST` and `RACCONTAMI_PORT` set where the server listens (default `0.0.0.0` and `8765`).
+Settings go in `settings.txt` in the home folder, one per line, as `NAME=value`
+(`RACCONTAMI_ONE_JOB=1`). The installer makes the file with the common ones ready to switch on, and
+never changes it afterwards; the start files, which it writes anew at every run, are not the place
+for settings. The server reads the file when it starts, with or without a window. A setting given
+as an environment variable (a service file, `docker run -e`) wins over the file.
+
+`RACCONTAMI_KEEP_AWAKE=0` lets Windows go to sleep while a job runs. `RACCONTAMI_TLS=0` turns the encrypted link off (plain HTTP); `RACCONTAMI_HOST` and `RACCONTAMI_PORT` set where the server listens (default `0.0.0.0` and `8765`).
 
 | Variable | Default | |
 |---|---|---|

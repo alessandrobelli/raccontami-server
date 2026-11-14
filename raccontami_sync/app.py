@@ -46,7 +46,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import narrate, pipeline, single, tray, unfinished  # noqa: E402
+from . import awake, narrate, pipeline, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
@@ -274,7 +274,8 @@ def _worker():
             continue
         if ONE_JOB and models.turn.locked():
             log(f"{j.label()}: waits for the narration to finish (RACCONTAMI_ONE_JOB)")
-        with models.turn:  # taken before begin(), so a job that waits still shows as queued
+        # taken before begin(), so a job that waits still shows as queued; the computer stays awake while it runs
+        with models.turn, awake.while_working():
             if j.state != "queued":
                 continue
             j.begin()
@@ -305,7 +306,8 @@ def _narration_worker():
             continue
         if ONE_JOB and models.turn.locked():
             log(f"{j.label()}: waits for the sync to finish (RACCONTAMI_ONE_JOB)")
-        with models.turn:  # taken before begin(), so a narration that waits still shows as queued
+        # taken before begin(), so a narration that waits still shows as queued; the computer stays awake while it runs
+        with models.turn, awake.while_working():
             if j.cancelled or j.state != "queued":  # the same, while it waited for its turn
                 continue
             if ONE_JOB and models.unload_whisper():
@@ -386,7 +388,7 @@ async def _lifespan(_app):
     log(f"  name: {NAME}   (shown in the app; set RACCONTAMI_NAME to change it)")
     # the token goes to the window only, never into a log: logs get shared when asking for help
     if HIDDEN:  # no window: what is printed ends in a file
-        log(f"  token for the app: in {DATA / 'token.txt'} (the icon's menu opens that folder)")
+        log(f"  token for the app: in {DATA / 'token.txt'} (the icon's menu shows it: Connect the phone)")
     else:
         print(f"          token for the app: {TOKEN}", flush=True)
         log(f"  token for the app: shown above, and in {DATA / 'token.txt'}")
@@ -395,6 +397,10 @@ async def _lifespan(_app):
         log(f"  encrypted link: yes. The app shows this code when it connects; check that it is the same: {code}")
     else:
         log("  encrypted link: no (plain HTTP). Others on the same network can read what passes; see the README")
+    address = tray.lan_address()
+    for_phone = tray.own_url().replace("localhost", address).rstrip("/") if address else None
+    if for_phone:
+        log(f"  address for the app: {for_phone}   (or \"Search local network\" in the app)")
     log(f"  data: {DATA}")
     waiting = [j for j in jobs.values() if j.state == "queued"]
     if waiting:
@@ -405,9 +411,13 @@ async def _lifespan(_app):
             + ". Continue them from the server's page, or start the server in a window to be asked again")
     log(f"  page: this server's address in a browser (on this computer: {tray.own_url()}) "
         "shows the work, and can put it on hold or continue it")
-    icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA)
-    if icon is not None and HIDDEN and held:
-        icon.announce(f"{len(held)} unfinished job(s) kept on hold. Continue from this icon's menu, or open the page.")
+    # the token is read by somebody at this computer, as in the window; with RACCONTAMI_TOKEN there is no file
+    icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA,
+                      connect=lambda: tray.connect_text(for_phone, DATA / "token.txt", code, token=TOKEN))
+    if icon is not None and HIDDEN:  # no window: without a word, a double click would seem to do nothing
+        icon.announce("The server is running. This icon opens its page, shows how to connect the phone, and stops it."
+                      + (f" {len(held)} unfinished job(s) are kept on hold: continue them from this icon's menu."
+                         if held else ""))
     yield
     stopping.set()  # also on Ctrl+C: a narration that is still being stopped is not written down as failed
     if icon is not None:

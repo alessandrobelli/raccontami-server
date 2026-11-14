@@ -33,6 +33,14 @@ class TrayTest(unittest.TestCase):
     def test_an_icon_on_windows(self):
         self.assertIsNone(tray.why_not("win32", {}))
 
+    def test_what_the_app_asks_for_is_said_with_the_code_to_compare(self):
+        text = tray.connect_text("https://192.168.1.4:8765/", "token.txt", "3fa9-07c2-b1d4-88e0", token="abc")
+        for part in ("https://192.168.1.4:8765/", "Token:  abc", "3fa9-07c2-b1d4-88e0"):
+            self.assertIn(part, text)
+
+    def test_without_the_encrypted_link_there_is_no_code_to_compare(self):
+        self.assertIn("no code to compare", tray.connect_text("http://192.168.1.4:8765/", "token.txt", None, token="abc"))
+
     def test_being_switched_off_never_raises_and_gives_no_icon(self):
         said = []
         import os

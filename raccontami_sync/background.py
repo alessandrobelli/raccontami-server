@@ -55,13 +55,20 @@ def _tell(text: str) -> None:
 def main(argv=None, wait: float = 40.0, tell=_tell) -> int:
     p = argparse.ArgumentParser(prog="raccontami_sync.background")
     p.add_argument("--home")
-    p.add_argument("--host", default=os.environ.get("RACCONTAMI_HOST", "0.0.0.0"))
-    p.add_argument("--port", type=int, default=int(os.environ.get("RACCONTAMI_PORT", "8765")))
+    p.add_argument("--host")
+    p.add_argument("--port", type=int)
     a = p.parse_args(argv)
     if a.home:
         os.environ["RACCONTAMI_HOME"] = a.home
-    os.environ.update(RACCONTAMI_WINDOWLESS="1", RACCONTAMI_HOST=a.host, RACCONTAMI_PORT=str(a.port),
-                      PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    # what was asked for here wins over the settings file, which the server reads when it starts
+    if a.host:
+        os.environ["RACCONTAMI_HOST"] = a.host
+    if a.port:
+        os.environ["RACCONTAMI_PORT"] = str(a.port)
+    os.environ.update(RACCONTAMI_WINDOWLESS="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    from . import settings
+
+    settings.load()  # the data folder may be set there
     from .paths import DATA  # after the settings above: it reads them
 
     DATA.mkdir(parents=True, exist_ok=True)

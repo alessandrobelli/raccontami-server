@@ -1,7 +1,7 @@
 """Starts the server:  python -m raccontami_sync.serve
 
 Encrypted by default, with the server's own certificate (see tls.py), on the same port as before.
-Settings, as environment variables:
+Settings, in <home>/settings.txt (see settings.py) or as environment variables:
   RACCONTAMI_TLS=0     plain HTTP: behind a proxy that does the encryption (Caddy, tailscale serve),
                        or for an app that is older than the encrypted link
   RACCONTAMI_HOST      address to listen on (default 0.0.0.0, every network of this computer)
@@ -26,6 +26,9 @@ def wants_tls(env=os.environ) -> bool:
 
 
 def main() -> None:
+    from . import settings
+
+    settings.load()  # before anything reads a setting: paths.py does when it is imported
     from .paths import DATA
 
     start = options()
