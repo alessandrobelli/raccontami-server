@@ -25,6 +25,21 @@ def wants_tls(env=os.environ) -> bool:
     return env.get("RACCONTAMI_TLS", "1").strip().lower() not in OFF
 
 
+def quiet_drops(loop, context) -> None:
+    """Keeps one harmless error out of the server's window (Windows).
+
+    A phone that only looks at the server's certificate (the app's search of the network, pairing,
+    a browser at the certificate warning) hangs up without a goodbye. Python on Windows then prints
+    "Exception in callback _ProactorBasePipeTransport._call_connection_lost" with a traceback and
+    "ConnectionResetError: [WinError 10054]" for each one: nothing is wrong, the connection is
+    already gone, and the lines look like a crash. Only that case is dropped; everything else is
+    shown as before."""
+    gone = isinstance(context.get("exception"), (ConnectionResetError, ConnectionAbortedError))
+    if gone and "_call_connection_lost" in str(context.get("message", "")):
+        return
+    loop.default_exception_handler(context)
+
+
 def main() -> None:
     from . import settings
 

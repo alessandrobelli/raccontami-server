@@ -383,6 +383,11 @@ async def _lifespan(_app):
         log(f"NOT STARTED: a Raccontami server is already running on {DATA}. Use that one (its icon next to the "
             "clock, or its page); stop it first to start another")
         raise RuntimeError("a Raccontami server is already running on this data folder")
+    import asyncio
+
+    from .serve import quiet_drops
+
+    asyncio.get_running_loop().set_exception_handler(quiet_drops)  # a phone that hangs up is not an error
     _load_existing()
     threading.Thread(target=_worker, daemon=True).start()
     threading.Thread(target=_narration_worker, daemon=True).start()
