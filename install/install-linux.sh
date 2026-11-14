@@ -53,16 +53,35 @@ if [ "$SKIP_PHONE" = 0 ]; then
   done
 fi
 
-step "Start script"
+step "Settings and start script"
+if [ ! -f "$H/settings.txt" ]; then
+  cat > "$H/settings.txt" <<'EOS'
+# Settings of the Raccontami server: one per line, NAME=value. Lines starting with # are notes.
+# The installer never changes this file. The README lists every setting.
+# The server reads it when it starts: restart the server after a change.
+
+# How the app names this server
+# RACCONTAMI_NAME=My server
+
+# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
+# RACCONTAMI_TLS=0
+
+# GPU under 12 GB: run syncs and narrations one at a time
+# RACCONTAMI_ONE_JOB=1
+EOS
+  # settings written into a start file made by an earlier version move here, so they are not lost
+  if [ -f "$H/start-server.sh" ] && grep -Eq '^export RACCONTAMI_(NAME|TLS|ONE_JOB)=' "$H/start-server.sh"; then
+    { echo; echo "# Kept from the earlier start file"
+      grep -E '^export RACCONTAMI_(NAME|TLS|ONE_JOB)=' "$H/start-server.sh" | sed -e 's/^export //' -e 's/"//g'; } >> "$H/settings.txt"
+    echo "settings kept from the earlier start file"
+  fi
+fi
+echo "$H/settings.txt"
 cat > "$H/start-server.sh" <<EOS
 #!/usr/bin/env bash
-# Starts the Raccontami server (port 8765). Made by install-linux.sh; run that again to update it.
+# Starts the Raccontami server (port 8765). Made by install-linux.sh, which writes it anew at every
+# run: settings go in settings.txt beside this file, not here.
 export RACCONTAMI_HOME="$H" PYTHONIOENCODING=utf-8 PYTHONUNBUFFERED=1
-# export RACCONTAMI_NAME="My server"
-# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
-# export RACCONTAMI_TLS=0
-# GPU under 12 GB: run syncs and narrations one at a time
-# export RACCONTAMI_ONE_JOB=1
 cd "$REPO"
 exec "$H/env/bin/python" -m raccontami_sync.serve
 EOS
@@ -90,4 +109,5 @@ EOS
 fi
 
 step "Done"
-echo "Start the server: $H/start-server.sh  (it prints the token to type into the app)"
+echo "Start the server: $H/start-server.sh  (it prints the address, the token and the code the app asks for)"
+echo "Settings:         $H/settings.txt"

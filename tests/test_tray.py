@@ -2,7 +2,7 @@
 
 import unittest
 
-from raccontami_sync import tray
+from raccontami_sync import connect_window, tray
 
 
 class TrayTest(unittest.TestCase):
@@ -32,6 +32,14 @@ class TrayTest(unittest.TestCase):
 
     def test_an_icon_on_windows(self):
         self.assertIsNone(tray.why_not("win32", {}))
+
+    def test_what_the_app_asks_for_is_said_with_the_code_to_compare(self):
+        rows = connect_window.facts("https://192.168.1.4:8765", "abc", "token.txt", "3fa9-07c2-b1d4-88e0")
+        self.assertEqual(["https://192.168.1.4:8765", "abc", "3fa9-07c2-b1d4-88e0"], [value for _, value, _ in rows])
+
+    def test_without_the_encrypted_link_there_is_no_code_to_compare(self):
+        rows = connect_window.facts("http://192.168.1.4:8765", "abc", "token.txt", None)
+        self.assertIn("no code to compare", connect_window.as_text(rows))
 
     def test_being_switched_off_never_raises_and_gives_no_icon(self):
         said = []

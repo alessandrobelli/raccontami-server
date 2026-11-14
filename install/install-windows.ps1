@@ -12,7 +12,8 @@
 param(
     [string]$RaccontamiHome = "$env:USERPROFILE\raccontami",
     [switch]$SkipModels,        # do not download the models now (they download on first use)
-    [switch]$SkipPhoneModels    # do not build the models the app downloads for syncing on the phone
+    [switch]$SkipPhoneModels,   # do not build the models the app downloads for syncing on the phone
+    [switch]$NoQuestions        # do not ask about the firewall and starting at login (the last lines say how)
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -75,20 +76,44 @@ if (-not $SkipPhoneModels) {
     }
 }
 
-Step "Start script"
+Step "Settings and start script"
 $start = "$H\start-server.bat"
+$settings = "$H\settings.txt"
+if (-not (Test-Path $settings)) {
+    # settings written into a start file made by an earlier version move here, so they are not lost
+    $kept = @()
+    if (Test-Path $start) {
+        $kept = @(Get-Content $start | Where-Object { $_ -match '^\s*set\s+(RACCONTAMI_(?!HOME=)\w+=.+)$' } |
+                  ForEach-Object { $Matches[1].Trim() })
+    }
+    @"
+# Settings of the Raccontami server: one per line, NAME=value. Lines starting with # are notes.
+# The installer never changes this file. The README lists every setting.
+# The server reads it when it starts: stop the server and start it again after a change.
+
+# How the app names this server
+# RACCONTAMI_NAME=My PC
+
+# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
+# RACCONTAMI_TLS=0
+
+# GPU under 12 GB: run syncs and narrations one at a time
+# RACCONTAMI_ONE_JOB=1
+"@ | Set-Content -Encoding utf8 $settings
+    if ($kept) {
+        Add-Content -Encoding utf8 $settings (@("", "# Kept from the earlier start file") + $kept)
+        Write-Host "settings kept from the earlier start file: $($kept -join ', ')"
+    }
+}
+Write-Host $settings
 @"
 @echo off
-rem Starts the Raccontami server (port 8765). Made by install-windows.ps1; run that again to update it.
+rem Starts the Raccontami server (port 8765). Made by install-windows.ps1, which writes it anew at
+rem every run: settings go in settings.txt beside this file, not here.
 title Raccontami server
 set RACCONTAMI_HOME=$H
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
-rem set RACCONTAMI_NAME=My PC
-rem Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
-rem set RACCONTAMI_TLS=0
-rem GPU under 12 GB: run syncs and narrations one at a time
-rem set RACCONTAMI_ONE_JOB=1
 cd /d "$Repo"
 "$serverPy" -m raccontami_sync.serve
 echo.
@@ -109,19 +134,63 @@ Write-Host $hidden
 
 Remove-Item -Recurse -Force "$H\pip-cache" -ErrorAction SilentlyContinue
 
+function Ask($question) {
+    # nobody to ask (run from another script): the answer is no, and the lines at the end say how to do it later
+    if ($NoQuestions -or -not [Environment]::UserInteractive) { return $false }
+    return (Read-Host "$question [y/N]").Trim() -match '^(y|yes|s|si)$'
+}
+
+Step "Your network"
+$ruleName = "Raccontami 8765"
+$ruleCommand = "New-NetFirewallRule -DisplayName '$ruleName' -Direction Inbound -Protocol TCP -LocalPort 8765 -RemoteAddress LocalSubnet -Action Allow"
+$ruleThere = [bool](Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
+if ($ruleThere) {
+    Write-Host "Windows firewall: phones on your network can already reach the server"
+} elseif (Ask "Let phones on your home network reach the server? Windows will ask for an administrator's permission.") {
+    try {
+        # the rule needs an administrator: only this one line is run as one
+        Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "-NoProfile", "-Command", $ruleCommand
+        $ruleThere = [bool](Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
+    } catch { $ruleThere = $false }
+    Write-Host $(if ($ruleThere) { "Windows firewall: rule added (port 8765, from your own network only)" }
+                 else { "Windows firewall: the rule was not added. The line to run later is below." })
+}
+
+$startup = [Environment]::GetFolderPath("Startup")
+$atLogin = Test-Path (Join-Path $startup (Split-Path -Leaf $hidden))
+if (-not $atLogin -and (Ask "Start the server by itself when you log in to Windows (without a window, next to the clock)?")) {
+    Copy-Item $hidden $startup
+    $atLogin = $true
+    Write-Host "It will start at login. To undo: Win+R -> shell:startup -> delete the shortcut."
+}
+
 Step "Done"
 Write-Host @"
 Start the server:   double-click $start
-                    (its window shows the token to type into the app)
+                    (its window shows the address, the token and the code the app asks for)
 Without a window:   double-click $hidden
-                    (it lives next to the clock: the icon there opens its page, puts work on hold and
-                    stops it; the token is in $H\server-data\token.txt)
-
-Let phones on your network reach it (run once, as administrator):
-  New-NetFirewallRule -DisplayName "Raccontami 8765" -Direction Inbound -Protocol TCP -LocalPort 8765 -RemoteAddress LocalSubnet -Action Allow
-
-Start it at login (so narrations resume after a restart):
-  Win+R -> shell:startup -> copy "$hidden" there
-  (started this way it does not take the graphics card by itself: unfinished work waits on hold
-  until you continue it from the icon or the page)
+                    (it lives next to the clock, maybe behind the small arrow there: the icon opens its
+                    page, shows how to connect the phone, puts work on hold and stops the server)
+Settings:           $settings
 "@
+if (-not $ruleThere) {
+    Write-Host @"
+
+Phones cannot reach the server yet. Run this once, as administrator:
+  $ruleCommand
+"@
+}
+if ($atLogin) {
+    Write-Host @"
+
+Started at login it does not take the graphics card by itself: an unfinished narration waits on
+hold, and the icon says so, until you continue it from the icon or the page.
+"@
+} else {
+    Write-Host @"
+
+To start it at login: Win+R -> shell:startup -> copy "$hidden" there.
+Started that way it does not take the graphics card by itself: an unfinished narration waits on
+hold, and the icon says so, until you continue it from the icon or the page.
+"@
+}

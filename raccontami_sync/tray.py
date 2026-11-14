@@ -38,6 +38,33 @@ def own_url(argv=None, env=None) -> str:
     return f"{scheme}://localhost:{own_port(argv, env)}/"
 
 
+def lan_address() -> str | None:
+    """This computer's address on the network it reaches others through: what a phone on the same
+    Wi-Fi types. Nothing is sent: the system is only asked which address it would use."""
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))  # an address reserved for examples (RFC 5737)
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
+def _show_connect(rows, server: str, log) -> None:
+    """The window with what the app asks for (connect_window.py); a plain box with the same text
+    when that window cannot be shown."""
+    from . import connect_window
+
+    try:
+        connect_window.show(rows, server, icon=image("working"))
+    except Exception as e:  # noqa: BLE001  no tkinter in this Python, or no desktop
+        log(f"  icon: the Connect window could not be shown ({type(e).__name__}: {e}); a plain box instead")
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, connect_window.as_text(rows), "Raccontami server", 0x40 | 0x10000)
+
+
 def why_not(platform=None, env=None) -> str | None:
     """None when an icon can be tried here; otherwise the reason there is none, for the log."""
     platform, env = sys.platform if platform is None else platform, os.environ if env is None else env
@@ -63,11 +90,13 @@ def image(kind: str):
 
 
 class Tray:
-    def __init__(self, name: str, port: int, summary, can, hold_all, continue_all, quit_server, log, folder=None):
+    def __init__(self, name: str, port: int, summary, can, hold_all, continue_all, quit_server, log, folder=None,
+                 connect=None):
         self.url = own_url(env={**os.environ, "RACCONTAMI_PORT": str(port)}, argv=[])
         self.name, self.summary, self.can = name, summary, can
         self.hold_all, self.continue_all, self.quit_server, self.log = hold_all, continue_all, quit_server, log
-        self.folder = folder  # where the token and the log are: the only way to them without a window
+        self.folder = folder  # where the token and the log are
+        self.connect = connect  # () -> what the app asks for, as connect_window.facts() gives it
         self.done = threading.Event()
         self.icon = None
         self.kind = None
@@ -105,6 +134,11 @@ class Tray:
             Item(lambda item: self.summary()[1], None, enabled=False),
             pystray.Menu.SEPARATOR,
             Item("Open the server's page", lambda icon, item: webbrowser.open(self.url), default=True),
+            # in a thread of its own: the window stays open as long as the reader needs it, and the icon goes on
+            Item("Connect the phone (address, token, code)",
+                 lambda icon, item: threading.Thread(target=_show_connect, args=(self.connect(), self.name, self.log),
+                                                     daemon=True).start(),
+                 visible=self.connect is not None),
             Item("Put everything on hold", act(self.hold_all), enabled=lambda item: self.can()["hold"]),
             Item("Continue what is on hold", act(self.continue_all), enabled=lambda item: self.can()["continue"]),
             pystray.Menu.SEPARATOR,
@@ -156,7 +190,7 @@ class Tray:
 
 
 def start(name: str, summary, can, hold_all, continue_all, quit_server, log, port: int | None = None,
-          folder=None) -> Tray | None:
+          folder=None, connect=None) -> Tray | None:
     """Shows the icon, or says in one line why not. Never raises: the server starts either way.
 
     summary()      -> (kind, text): kind is "working", "hold" or "idle"; text is one short line
@@ -176,7 +210,7 @@ def start(name: str, summary, can, hold_all, continue_all, quit_server, log, por
         log(f"  icon next to the clock: none, {reason}")
         return None
     tray = Tray(name, own_port() if port is None else port, summary, can, hold_all, continue_all, quit_server, log,
-                folder=folder)
+                folder=folder, connect=connect)
     tray.start()
     log("  icon next to the clock: yes (Windows may keep it behind the small arrow there). It opens the page, "
         "puts the work on hold and stops the server")
