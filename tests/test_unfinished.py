@@ -217,6 +217,13 @@ class PageFactsTest(unittest.TestCase):
     def test_an_unknown_failure_has_no_explanation(self):
         self.assertIsNone(u.explain("ValueError: something nobody has seen"))
 
+    def test_paths_in_the_last_lines_of_a_log_are_not_taken_for_a_cause(self):
+        tail = ("RuntimeError: The voice stopped with an error: "
+                'File "F:\\raccontami\\tts\\env-a\\Lib\\site-packages\\torch\\cuda\\__init__.py", line 12, in f | '
+                'File "F:\\raccontami\\tts\\env-a\\Lib\\site-packages\\huggingface_hub\\file_download.py", line 9 | '
+                "KeyError: 'speaker' (ffmpeg and nvidia are only words here)")
+        self.assertIsNone(u.explain(tail))
+
     def test_no_error_has_no_explanation(self):
         self.assertIsNone(u.explain(None))
 

@@ -28,9 +28,15 @@ same steps but have not been run on real hardware yet; reports welcome.
 | Disk | 35 GB | 50 GB on a fast drive, plus room for finished work (see [Disk space](#disk-space)) |
 | Software | Python 3.12, ffmpeg, git | |
 
-On Windows, the three programs install with `winget install Python.Python.3.12 Gyan.FFmpeg Git.Git`;
-open a new terminal afterwards. The installer checks the driver, the free space and the programs
-before it downloads anything.
+On Windows, the three programs install from PowerShell; open a new terminal afterwards:
+
+```powershell
+winget install Python.Python.3.12
+winget install Gyan.FFmpeg
+winget install Git.Git
+```
+
+The installer checks the driver, the free space, Python and ffmpeg before it downloads anything.
 
 ## Install
 

@@ -82,7 +82,8 @@
                aria-describedby="tokenHelp tokenError">
         <label class="check"><input id="showToken" type="checkbox"> Show what I type</label>
         <p class="muted small" id="tokenHelp" style="margin-top:8px">Shown in the server's window when it starts. Without a
-          window: the icon next to the clock, then Connect the phone, where it can be copied. It is kept in this browser only.</p>
+          window: the icon next to the clock, then Connect the phone, where it can be copied. It is also saved in
+          server-data/token.txt on the server. It is kept in this browser only.</p>
         <p class="error" id="tokenError" role="alert" hidden></p>
         <div class="row" style="margin-top:14px"><button class="primary" type="submit">Open</button></div>
       </form>
@@ -311,7 +312,10 @@ function jobCard(j) {
   ready.hidden = true;
   card.append(ready);
   // what went wrong in plain words, when the server knows; the error itself stays with the facts
-  if (j.state === "failed" && j.errorHint) card.append(el("p", j.errorHint, "hint"));
+  // (without a known cause, the start of what the server reported: a failure is never shown without a reason)
+  if (j.state === "failed" && (j.errorHint || j.error)) {
+    card.append(el("p", j.errorHint || "The server reported: " + (j.error.length > 220 ? j.error.slice(0, 220) + " …" : j.error), "hint"));
+  }
   const buttons = el("div", null, "row");
   const at = "/v1/jobs/" + encodeURIComponent(j.id);
   if (j.can.continue) buttons.append(actionButton("Continue", "primary", () => api("POST", at + "/continue")));
@@ -369,8 +373,8 @@ function showDone(list) {
     if (j.can.delete) {
       const b = actionButton("Delete", "danger", async () => {
         if (confirm("Delete the finished " + (narration ? "narration" : "sync") + " “" + nameOf(j) + "” from this computer?\n\n"
-                    + "The story stays on the phone if the phone has already downloaded it. If it has not, or if the "
-                    + "same story is sent again, the work starts over.\n\nThis cannot be undone.")) {
+                    + "The story stays on the phone if the phone has already downloaded it. If it has not, it has "
+                    + "to be sent again from the app, and the work is done again.\n\nThis cannot be undone.")) {
           await api("DELETE", "/v1/jobs/" + encodeURIComponent(j.id));
         }
       });
