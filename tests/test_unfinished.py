@@ -194,5 +194,31 @@ class UnfinishedTest(unittest.TestCase):
         self.assertFalse(u.interactive(Piped(), Piped()))
 
 
+class PageFactsTest(unittest.TestCase):
+    """What the server's page says about a job besides its progress."""
+
+    def test_a_jobs_size_is_the_sum_of_its_files_in_every_folder(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "pieces").mkdir()
+        (d / "audio.m4a").write_bytes(b"x" * 10)
+        (d / "pieces" / "1.wav").write_bytes(b"x" * 5)
+        self.assertEqual(15, u.folder_bytes(d))
+
+    def test_a_folder_that_is_gone_takes_no_room(self):
+        self.assertEqual(0, u.folder_bytes(Path(tempfile.mkdtemp()) / "deleted"))
+
+    def test_running_out_of_graphics_memory_is_said_in_words(self):
+        self.assertIn("graphics card ran out of memory",
+                      u.explain("RuntimeError: CUDA out of memory. Tried to allocate 2.50 GiB"))
+
+    def test_a_full_disk_is_said_in_words(self):
+        self.assertIn("disk is full", u.explain("OSError: [Errno 28] No space left on device"))
+
+    def test_an_unknown_failure_has_no_explanation(self):
+        self.assertIsNone(u.explain("ValueError: something nobody has seen"))
+
+    def test_no_error_has_no_explanation(self):
+        self.assertIsNone(u.explain(None))
+
 if __name__ == "__main__":
     unittest.main()

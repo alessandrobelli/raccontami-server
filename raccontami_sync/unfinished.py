@@ -33,6 +33,42 @@ def pieces_done(job: Path) -> int:
     return sum(1 for _ in d.glob("*.wav")) if d.is_dir() else 0
 
 
+def folder_bytes(job: Path) -> int:
+    """How much disk a job takes. A file that goes away while it is counted is simply not counted."""
+    total = 0
+    for root, _dirs, files in os.walk(job):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+# what a failure usually means, and what to do: the raw error is for whoever reads the log
+_CAUSES = (
+    (("out of memory",), "The graphics card ran out of memory. Close what else is using it (a game, another "
+                         "AI program) and continue; on a card under 12 GB, set RACCONTAMI_ONE_JOB=1 in settings.txt."),
+    (("no space left", "errno 28", "not enough space"), "The disk is full. Delete finished jobs below, or free space "
+                                                        "on the drive, then continue."),
+    (("ffmpeg", "invalid data found", "could not find codec", "failed to load audio"),
+     "The audio file could not be read. Try it in a player; if it plays, convert it to MP3 or M4A and send it again."),
+    (("cuda", "nvidia", "no kernel image"), "The graphics card or its driver did not answer. Update the NVIDIA driver, "
+                                            "restart the computer, and continue."),
+    (("connection", "timed out", "name resolution", "huggingface"), "A model could not be downloaded. Check the "
+                                                                    "internet connection of this computer and continue."),
+)
+
+
+def explain(error: str | None) -> str | None:
+    """A failure in the reader's words, for the causes that have one; None for the rest."""
+    text = (error or "").lower()
+    for marks, meaning in _CAUSES:
+        if any(mark in text for mark in marks):
+            return meaning
+    return None
+
+
 def is_unfinished(job: Path, status: dict) -> bool:
     state = status.get("state")
     if state in ("queued", "running", HELD):

@@ -34,8 +34,31 @@ Write-Host "ffmpeg: ok"
 try { $gpu = (& nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader) } catch { $gpu = $null }
 if (-not $gpu) { Fail "No NVIDIA GPU found (nvidia-smi). Install the latest NVIDIA driver." }
 Write-Host "GPU: $gpu"
+# the voices need CUDA 12.8, which drivers before 570 do not have: found now, not after 35 GB of downloads
+$driver = 0
+if (@($gpu)[0] -match ',\s*(\d+)\.[\d.]+\s*$') { $driver = [int]$Matches[1] }
+if ($driver -and $driver -lt 570) {
+    Fail "The NVIDIA driver is version $driver; the server needs 570 or newer. Update it from nvidia.com (or the NVIDIA app), then run this again."
+}
 
-New-Item -ItemType Directory -Force $H, "$H\server-data", "$H\models", "$H\onnx", "$H\tts" | Out-Null
+New-Item -ItemType Directory -Force $H | Out-Null
+$fresh = -not (Test-Path "$H\env\Scripts\python.exe")
+$freeGB = [math]::Floor(([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot((Resolve-Path $H).Path))).AvailableFreeSpace / 1GB)
+Write-Host "Free space on the drive of ${H}: $freeGB GB"
+if ($fresh) {
+    if ($freeGB -lt 35) {
+        Fail "A new install needs about 35 GB (15 GB of Python environments, 20 GB of models) and this drive has $freeGB GB free. Free some space, or choose another drive with -RaccontamiHome."
+    }
+    Write-Host @"
+
+This installs everything into $H
+and downloads about 35 GB: three Python environments (about 15 GB) and the models (about 20 GB).
+On a fast connection that is around half an hour; on a slow one it can take hours. It can be
+stopped and run again: what is already there is kept.
+"@
+}
+
+New-Item -ItemType Directory -Force "$H\server-data", "$H\models", "$H\onnx", "$H\tts" | Out-Null
 $env:PIP_CACHE_DIR = "$H\pip-cache"     # keeps the multi-GB downloads off C:
 $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 $env:RACCONTAMI_HOME = $H
@@ -46,19 +69,21 @@ function Ensure-Env($dir, $requirements, $label) {
     if (-not (Test-Path $python)) { & py -3.12 -m venv $dir; if ($LASTEXITCODE) { Fail "Could not create $dir" } }
     & $python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() and torch.__version__.startswith('2.11') else 1)" 2>$null
     if ($LASTEXITCODE) {
-        Write-Host "installing PyTorch with CUDA (about 3 GB)..."
-        & $python -m pip install -q torch==2.11.0 torchaudio==2.11.0 --index-url $TorchIndex
+        Write-Host "installing PyTorch with CUDA (about 3 GB; the bar below shows the download)..."
+        & $python -m pip install torch==2.11.0 torchaudio==2.11.0 --index-url $TorchIndex
         if ($LASTEXITCODE) { Fail "PyTorch install failed in $dir" }
     } else { Write-Host "PyTorch with CUDA: already there" }
+    Write-Host "installing the other packages (a few minutes, nothing is shown meanwhile)..."
     & $python -m pip install -q -r "$Repo\$requirements"
     if ($LASTEXITCODE) { Fail "Installing $requirements failed in $dir" }
     Write-Host "ok"
-    return $python
 }
 
-$serverPy = Ensure-Env "$H\env" "requirements.txt" "server"
-Ensure-Env "$H\tts\env-a" "requirements-voxcpm.txt" "Italian voice (VoxCPM2)" | Out-Null
-Ensure-Env "$H\tts\env-c" "requirements-qwen.txt" "English voice (Qwen3-TTS)" | Out-Null
+# called without taking their output, so pip writes straight to the window and can draw its progress bar
+$serverPy = "$H\env\Scripts\python.exe"
+Ensure-Env "$H\env" "requirements.txt" "server"
+Ensure-Env "$H\tts\env-a" "requirements-voxcpm.txt" "Italian voice (VoxCPM2)"
+Ensure-Env "$H\tts\env-c" "requirements-qwen.txt" "English voice (Qwen3-TTS)"
 
 if (-not $SkipModels) {
     Step "Downloading the models (about 20 GB the first time)"
@@ -164,7 +189,14 @@ if (-not $atLogin -and (Ask "Start the server by itself when you log in to Windo
     Write-Host "It will start at login. To undo: Win+R -> shell:startup -> delete the shortcut."
 }
 
+$startedNow = $false
+if (Ask "Start the server now? Its window shows the address, the token and the code the app asks for.") {
+    Start-Process $start
+    $startedNow = $true
+}
+
 Step "Done"
+if ($startedNow) { Write-Host "The server is starting in its own window. In the app: Settings, the server's settings, Search local network.`n" }
 Write-Host @"
 Start the server:   double-click $start
                     (its window shows the address, the token and the code the app asks for)

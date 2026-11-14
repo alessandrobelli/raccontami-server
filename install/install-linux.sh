@@ -21,7 +21,18 @@ step "Checking the computer"
 command -v python3.12 >/dev/null || fail "python3.12 not found (e.g. apt install python3.12 python3.12-venv)."
 command -v ffmpeg >/dev/null || fail "ffmpeg not found (e.g. apt install ffmpeg)."
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader || fail "No NVIDIA GPU found (nvidia-smi)."
+# the voices need CUDA 12.8, which drivers before 570 do not have: found now, not after 35 GB of downloads
+driver="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n 1 | cut -d. -f1)"
+case "$driver" in ''|*[!0-9]*) driver=0;; esac
+[ "$driver" -eq 0 ] || [ "$driver" -ge 570 ] || fail "The NVIDIA driver is version $driver; the server needs 570 or newer."
 
+mkdir -p "$H"
+free_gb="$(df -Pk "$H" | awk 'NR==2 {print int($4 / 1048576)}')"
+echo "Free space on the drive of $H: ${free_gb} GB"
+if [ ! -x "$H/env/bin/python" ]; then
+  [ "$free_gb" -ge 35 ] || fail "A new install needs about 35 GB (15 GB of Python environments, 20 GB of models) and this drive has ${free_gb} GB free. Free some space, or set RACCONTAMI_HOME to another drive."
+  printf '\nThis installs everything into %s and downloads about 35 GB.\nIt can be stopped and run again: what is already there is kept.\n' "$H"
+fi
 mkdir -p "$H"/{server-data,models,onnx,tts}
 export PIP_DISABLE_PIP_VERSION_CHECK=1 RACCONTAMI_HOME="$H"
 
@@ -32,8 +43,9 @@ ensure_env() {  # dir requirements label
     echo "PyTorch with CUDA: already there"
   else
     echo "installing PyTorch with CUDA (about 3 GB)..."
-    "$1/bin/pip" install -q torch==2.11.0 torchaudio==2.11.0 --index-url "$TORCH_INDEX"
+    "$1/bin/pip" install torch==2.11.0 torchaudio==2.11.0 --index-url "$TORCH_INDEX"
   fi
+  echo "installing the other packages (a few minutes, nothing is shown meanwhile)..."
   "$1/bin/pip" install -q -r "$REPO/$2"
   echo ok
 }

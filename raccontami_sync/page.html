@@ -50,6 +50,20 @@
   .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; }
   .facts dt { color: var(--muted); }
   .facts dd { margin: 0; overflow-wrap: anywhere; }
+  /* a job's facts fold away on a phone, so its state and its buttons fit on one screen */
+  details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 15px; padding: 8px 0; width: max-content; }
+  details.more summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  details.more .facts { margin: 4px 0 4px; }
+  .card .row + details.more, .card .why + details.more { margin-top: 6px; }
+  .why { margin: 0 0 10px; }
+  .hint { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--page); }
+  .check { display: flex; gap: 8px; align-items: center; font-weight: 400; margin: 10px 0 0; }
+  .check input { width: auto; }
+  .done-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 0;
+              border-top: 1px solid var(--line); }
+  .done-row div { min-width: 0; overflow-wrap: anywhere; }
+  .done-row button { flex: none; }
+  @media (prefers-reduced-motion: reduce) { .bar div { transition: none; } }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -64,10 +78,12 @@
     <div class="card">
       <form id="tokenForm">
         <label for="token">The server's token</label>
-        <input id="token" type="password" autocomplete="off" spellcheck="false" required>
-        <p class="muted small" style="margin-top:8px">Shown in the server's window when it starts, and saved in
-          server-data/token.txt on this computer (the icon next to the clock opens that folder). It is kept in this browser only.</p>
-        <p class="error" id="tokenError" hidden></p>
+        <input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required
+               aria-describedby="tokenHelp tokenError">
+        <label class="check"><input id="showToken" type="checkbox"> Show what I type</label>
+        <p class="muted small" id="tokenHelp" style="margin-top:8px">Shown in the server's window when it starts. Without a
+          window: the icon next to the clock, then Connect the phone, where it can be copied. It is kept in this browser only.</p>
+        <p class="error" id="tokenError" role="alert" hidden></p>
         <div class="row" style="margin-top:14px"><button class="primary" type="submit">Open</button></div>
       </form>
     </div>
@@ -81,7 +97,16 @@
         <button id="continueAll" type="button">Continue what is on hold</button>
       </div>
       <div id="jobs"></div>
-      <p class="muted" id="none" hidden>Nothing to do: no story is waiting or being worked on.</p>
+      <p class="muted" id="none" hidden>Nothing to do: no story is waiting or being worked on. Send one from the app:
+        create a story there and choose to sync or narrate it on this server.</p>
+
+      <h2 id="doneHead" hidden>Finished</h2>
+      <div class="card" id="doneCard" hidden>
+        <p id="doneSummary"></p>
+        <p class="muted small" style="margin-top:6px">The phone has its own copy of a story once it has downloaded it. A job
+          kept here is answered at once if the same story is sent again; deleted, it would be worked on again.</p>
+        <details class="more" id="doneMore"><summary>Show them</summary><div id="done"></div></details>
+      </div>
     </div>
 
     <h2>This server</h2>
@@ -179,6 +204,7 @@ function showSignIn(message) {
   $("tokenError").hidden = !message;
   $("tokenError").textContent = message || "";
   $("token").focus();
+  $("token").select();  // what was typed stays, to be corrected instead of typed again
 }
 
 function actionButton(label, cls, run) {
@@ -188,6 +214,7 @@ function actionButton(label, cls, run) {
     b.disabled = true;
     setRefused("");
     try { await run(); } catch (e) { setRefused(e.message); }
+    b.disabled = false;  // the question may have been answered with no: the button must work again
     refresh();
   });
   return b;
@@ -198,21 +225,37 @@ function actionButton(label, cls, run) {
 const cards = new Map(); // job id -> { card, shape, numbers, fill }
 
 function shapeOf(j) {
-  return JSON.stringify([j.state, j.stage, j.holding, j.can, j.about, j.error]);
+  return JSON.stringify([j.state, j.stage, j.holding, j.can, j.about, j.error, j.errorHint]);
 }
 
 function setProgress(c, j) {
   const pct = Math.round(j.progress * 100);
   c.numbers.textContent = pct + " %" + (j.etaSeconds != null ? " · " + timeLeft(j.etaSeconds) : "");
   c.fill.style.width = pct + "%";
+  c.bar.setAttribute("aria-valuenow", pct);
   const d = j.details || {};
   c.live.pieces(d.piecesTotal ? count(d.piecesDone || 0) + " of " + count(d.piecesTotal) + " made"
                 : d.piecesDone ? count(d.piecesDone) + " made" : "");
-  c.live.ready(d.audioReadySeconds ? "the first " + duration(d.audioReadySeconds) + " can already be listened to" : "");
+  const ready = d.audioReadySeconds ? "The first " + duration(d.audioReadySeconds) + " can already be listened to on the phone." : "";
+  c.ready.textContent = ready;
+  c.ready.hidden = !ready;
   c.live.last(d.lastWorked && j.state !== "queued" ? when(d.lastWorked) : "");
+  c.live.size(d.bytes ? size(d.bytes) : "");
 }
 
 const count = n => Number(n).toLocaleString("en");
+
+function size(bytes) {
+  const mb = bytes / 1048576;
+  return mb < 1000 ? Math.max(1, Math.round(mb)) + " MB" : (mb / 1024).toFixed(1) + " GB";
+}
+
+const nameOf = j => (j.details || {}).title || (j.kind === "narrate" ? "A narration without a name" : "A sync without a name");
+
+// Facts are open on a wide screen and folded on a phone, until the reader chooses; the choice is
+// kept when a card is built again.
+const factsOpen = new Map(); // job id -> what the reader chose
+const wide = () => window.matchMedia("(min-width: 700px)").matches;
 
 function duration(s) {
   if (s < 3600) return Math.max(1, Math.round(s / 60)) + " min";
@@ -255,34 +298,87 @@ function jobCard(j) {
   head.append(el("span", stateText(j), "state"), numbers);
   const d = j.details || {};
   const narration = j.kind === "narrate";
-  card.append(head, el("h3", d.title || (narration ? "A narration without a name" : "A sync without a name")));
+  card.append(head, el("h3", nameOf(j)));
   if (!d.title) card.append(el("p", "The phone app that sent it does not tell the server the story's name yet.", "muted small"));
   const bar = el("div", null, "bar"), fill = el("div");
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-label", "Progress of " + nameOf(j));
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", "100");
   bar.append(fill);
   card.append(bar);
+  const ready = el("p", "", "why");
+  ready.hidden = true;
+  card.append(ready);
+  // what went wrong in plain words, when the server knows; the error itself stays with the facts
+  if (j.state === "failed" && j.errorHint) card.append(el("p", j.errorHint, "hint"));
+  const buttons = el("div", null, "row");
+  const at = "/v1/jobs/" + encodeURIComponent(j.id);
+  if (j.can.continue) buttons.append(actionButton("Continue", "primary", () => api("POST", at + "/continue")));
+  if (j.can.hold) buttons.append(actionButton("Put on hold", "", () => api("POST", at + "/hold")));
+  if (j.can.delete) buttons.append(actionButton("Delete", "danger", async () => {
+    if (confirm("Delete this " + (narration ? "narration" : "sync") + " and everything made for it so far?\n\nThis cannot be undone.")) {
+      await api("DELETE", at);
+    }
+  }));
+  if (buttons.childElementCount) card.append(buttons);
+  else if (j.state === "running") card.append(el("p", "A sync cannot be put on hold or deleted while it runs: it has no place to stop and pick up again. It ends by itself, usually within minutes.", "muted small why"));
+  if (j.state === "held") card.append(el("p", "Nothing works on it. Continue it here, or answer the question the server asks when it starts.", "muted small why"));
+  const more = el("details", null, "more");
+  more.append(el("summary", "Details"));
+  more.open = factsOpen.has(j.id) ? factsOpen.get(j.id) : wide();
+  more.addEventListener("toggle", () => factsOpen.set(j.id, more.open));
   const dl = el("dl", null, "facts");
   fact(dl, "What", narration ? "Narration: the server reads the text aloud" : "Sync: an audiobook lined up with its text");
   if (d.beginning) fact(dl, "Begins", "“" + d.beginning + " …”");
   fact(dl, "Language", d.language);
   if (d.words) fact(dl, "Length", count(d.words) + " words" + (d.audioSecondsAbout ? ", about " + duration(d.audioSecondsAbout) + " of audio" : ""));
   if (narration) fact(dl, "Voices", d.narrators ? d.narrators + " narrators told by " + d.voices + " voices" : "one voice");
-  const live = { pieces: liveFact(dl, "Pieces of audio"), ready: liveFact(dl, "On the phone") };
+  const live = { pieces: liveFact(dl, "Pieces of audio") };
   if (d.sent) fact(dl, "Sent", when(d.sent) + (d.device ? ", from " + d.device : ""));
   live.last = liveFact(dl, "Last worked on");
+  live.size = liveFact(dl, "On disk");
   if (j.state === "failed" && j.error) fact(dl, "Error", j.error);
-  card.append(dl);
-  const buttons = el("div", null, "row");
-  const at = "/v1/jobs/" + encodeURIComponent(j.id);
-  if (j.can.continue) buttons.append(actionButton("Continue", "primary", () => api("POST", at + "/continue")));
-  if (j.can.hold) buttons.append(actionButton("Put on hold", "", () => api("POST", at + "/hold")));
-  if (j.can.delete) buttons.append(actionButton("Delete", "danger", async () => {
-    if (confirm("Delete this narration and everything made for it so far?\n\nThis cannot be undone.")) {
-      await api("DELETE", at);
+  more.append(dl);
+  card.append(more);
+  return { card, numbers, fill, bar, ready, live };
+}
+
+// Finished jobs: how much room they take, and a way to delete each. The list is built again only
+// when it changes, so a button is not swapped away while it is being pressed.
+let doneShape = "";
+
+function showDone(list) {
+  $("doneHead").hidden = $("doneCard").hidden = list.length === 0;
+  const shape = JSON.stringify(list.map(j => [j.id, (j.details || {}).bytes]));
+  if (shape === doneShape) return;
+  doneShape = shape;
+  const total = list.reduce((sum, j) => sum + ((j.details || {}).bytes || 0), 0);
+  $("doneSummary").textContent = (list.length === 1 ? "1 finished job is" : count(list.length) + " finished jobs are")
+    + " kept on this computer" + (total ? ", taking " + size(total) + "." : ".");
+  $("doneMore").firstElementChild.textContent = list.length === 1 ? "Show it" : "Show them";
+  const box = $("done");
+  box.replaceChildren();
+  for (const j of list) {
+    const d = j.details || {}, narration = j.kind === "narrate";
+    const row = el("div", null, "done-row"), text = el("div");
+    text.append(el("div", nameOf(j), "state"),
+                el("div", [narration ? "Narration" : "Sync", d.language, d.bytes ? size(d.bytes) : null,
+                           d.lastWorked ? "finished " + when(d.lastWorked) : null].filter(Boolean).join(" · "), "muted small"));
+    row.append(text);
+    if (j.can.delete) {
+      const b = actionButton("Delete", "danger", async () => {
+        if (confirm("Delete the finished " + (narration ? "narration" : "sync") + " “" + nameOf(j) + "” from this computer?\n\n"
+                    + "The story stays on the phone if the phone has already downloaded it. If it has not, or if the "
+                    + "same story is sent again, the work starts over.\n\nThis cannot be undone.")) {
+          await api("DELETE", "/v1/jobs/" + encodeURIComponent(j.id));
+        }
+      });
+      b.setAttribute("aria-label", "Delete " + nameOf(j));
+      row.append(b);
     }
-  }));
-  if (buttons.childElementCount) card.append(buttons);
-  if (j.state === "held") card.append(el("p", "Nothing works on it. Continue it here, or answer the question the server asks when it starts.", "muted small"));
-  return { card, numbers, fill, live };
+    box.append(row);
+  }
 }
 
 function fact(dl, name, value) {
@@ -296,12 +392,13 @@ async function refresh() {
     const [health, jobs] = await Promise.all([api("GET", "/v1/health"), api("GET", "/v1/jobs")]);
     $("signin").hidden = true;
     $("content").hidden = false;
+    $("token").value = "";  // accepted: no longer needed on the page
     lostAt = null;
     showNotice();
     $("subtitle").textContent = "What " + (health.name || "this computer") + " is working on for your phone.";
     const shown = jobs.filter(j => j.state !== "done");
-    const finished = jobs.length - shown.length;
     showJobs(shown);
+    showDone(jobs.filter(j => j.state === "done"));
     $("none").hidden = shown.length > 0;
     // for everything at once, as in the icon's menu: worth showing when there is more than one job to press
     const canHold = shown.filter(j => j.can.hold).length, onHold = shown.filter(j => j.state === "held").length;
@@ -313,7 +410,10 @@ async function refresh() {
     fact(dl, "Name", health.name);
     fact(dl, "Graphics card", health.gpu || "none found");
     fact(dl, "Voices", Object.entries(health.narration || {}).map(([lang, v]) => lang + ": " + v).join(", "));
-    fact(dl, "Finished jobs kept", finished);
+    if (health.freeBytes != null) {
+      fact(dl, "Free disk space", size(health.freeBytes)
+           + (health.freeBytes < 10 * 1073741824 ? ": little is left. A narrated book needs a few GB while it is made" : ""));
+    }
     fact(dl, "Version", health.version);
   } catch (e) {
     if (e.status === 401) { showSignIn(token ? "The server does not accept this token." : ""); return; }
@@ -326,7 +426,6 @@ async function refresh() {
 $("tokenForm").addEventListener("submit", ev => {
   ev.preventDefault();
   token = $("token").value.trim();
-  $("token").value = "";
   try { localStorage.setItem(KEY, token); } catch (e) { /* kept for this visit only */ }
   refresh();
 });
@@ -340,6 +439,7 @@ for (const [id, path] of [["holdAll", "/v1/hold"], ["continueAll", "/v1/continue
     refresh();
   });
 }
+$("showToken").addEventListener("change", () => { $("token").type = $("showToken").checked ? "text" : "password"; });
 $("notice").addEventListener("click", () => setRefused(""));
 $("forget").addEventListener("click", () => {
   token = "";

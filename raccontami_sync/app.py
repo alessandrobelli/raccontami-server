@@ -115,6 +115,7 @@ class JobState:
         self.facts: dict = {}  # the same, as separate facts (see unfinished.facts)
         self.pieces_total = None  # narrations: how many pieces of audio, once planned
         self.pieces_done, self.counted_at = 0, -1e9  # and how many are made, counted now and then
+        self.bytes, self.sized_at, self.sized_state = None, -1e9, None  # how much disk it takes, measured now and then
         self.partial = None  # narrations: latest published part {"release", "audioSeconds", "toToken"}
         self.dir = JOBS / job_id
         self.state = "queued"
@@ -366,6 +367,14 @@ def _gpu_name() -> str | None:
         return None
 
 
+def _free_bytes() -> int | None:
+    """Free space on the drive the jobs are on, for the server's page."""
+    try:
+        return shutil.disk_usage(JOBS).free
+    except OSError:
+        return None
+
+
 @asynccontextmanager
 async def _lifespan(_app):
     global _lock
@@ -444,6 +453,7 @@ def health():
 
     return {"ok": True, "version": app.version, "name": NAME,
             "gpu": _gpu_name(),
+            "freeBytes": _free_bytes(),
             "queue": work.qsize(), "languages": sorted(pipeline.ALIGN_MODELS),
             "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()},
             # the voices a narrator can be given, per language (none: one voice only)
@@ -766,8 +776,13 @@ def list_jobs():
             details["lastWorked"] = int((j.dir / "status.json").stat().st_mtime)
         except OSError:
             details["lastWorked"] = None
+        # thousands of files: a finished job is measured once, one that still grows once a minute
+        if j.sized_state != j.state or (j.state != "done" and now - j.sized_at > 60):
+            j.bytes, j.sized_at, j.sized_state = unfinished.folder_bytes(j.dir), now, j.state
+        details["bytes"] = j.bytes
         status = {"state": j.state, "kind": j.kind}
         out.append({**j.view(), "about": j.about, "details": details, "holding": j.hold,
+                    "errorHint": unfinished.explain(j.error) if j.state == "failed" else None,
                     "can": {"hold": j.state == "queued" or (j.state == "running" and j.kind == "narrate" and not j.hold),
                             "continue": unfinished.can_continue(j.dir, status),
                             "delete": unfinished.can_delete(status)}})

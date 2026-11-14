@@ -22,8 +22,9 @@ REPOS = [
     "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",            # English narration
 ]
 
-for repo in REPOS:
-    print("model", repo, flush=True)
+total = len(REPOS) + 1  # and Whisper, below
+for at, repo in enumerate(REPOS, 1):
+    print(f"model {at} of {total}: {repo}", flush=True)
     snapshot_download(repo)
 
 import whisper  # noqa: E402
@@ -31,6 +32,6 @@ import whisper  # noqa: E402
 from raccontami_sync.pipeline import WHISPER_MODEL  # noqa: E402  (RACCONTAMI_WHISPER_MODEL, default turbo)
 
 if WHISPER_MODEL in whisper._MODELS:  # a model file given by its path needs no download
-    print("model whisper", WHISPER_MODEL, flush=True)
+    print(f"model {total} of {total}: whisper {WHISPER_MODEL}", flush=True)
     whisper._download(whisper._MODELS[WHISPER_MODEL], str(MODELS / "whisper"), in_memory=False)
 print("all models ready")
