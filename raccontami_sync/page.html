@@ -161,7 +161,14 @@ function showNotice() {
   $("work").inert = lost;
 }
 
-function setRefused(message) { refused = message || ""; showNotice(); }
+// A refusal is read once: it leaves after a while or at a tap, so it does not cover the page for good.
+let refusedTimer = null;
+function setRefused(message) {
+  clearTimeout(refusedTimer);
+  refused = message || "";
+  if (refused) refusedTimer = setTimeout(() => setRefused(""), 15000);
+  showNotice();
+}
 
 function showSignIn(message) {
   clearTimeout(timer);
@@ -333,6 +340,7 @@ for (const [id, path] of [["holdAll", "/v1/hold"], ["continueAll", "/v1/continue
     refresh();
   });
 }
+$("notice").addEventListener("click", () => setRefused(""));
 $("forget").addEventListener("click", () => {
   token = "";
   try { localStorage.removeItem(KEY); } catch (e) { /* nothing was kept */ }

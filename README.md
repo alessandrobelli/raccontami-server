@@ -10,13 +10,14 @@ and does three jobs for the app:
 | **Narrate** | reads a text aloud with a natural voice, then syncs it | ~1 h of work per 3 h of audio |
 | **Phone models** | serves the small models the app uses to sync on the phone itself | – |
 
-Narrations survive restarts: if the computer is turned off, the job continues from the last
-finished paragraph when the server starts again. Started in a window, the server asks first about
+Narrations survive restarts: if the computer is turned off, nothing made so far is lost, and the
+job goes on from the last finished paragraph once the server is back. Started in a window, the server asks first about
 each unfinished job: continue it now, delete the work done so far, or keep it on hold (nothing
 works on it, and the question comes back at the next start). Without an answer within a minute
 (`RACCONTAMI_ASK_SECONDS`, 0 = wait for ever) the server goes on by itself: work that was running
 continues, and nothing is deleted.
-Without a window (a service, Docker) unfinished jobs continue by themselves, as before.
+As a service or in Docker, unfinished jobs continue by themselves. Started without a window on
+Windows (see below), they wait on hold until you continue them.
 Only one server runs on a data folder: a second start says so and ends, instead of touching the
 work of the first.
 
@@ -233,7 +234,7 @@ as an environment variable (a service file, `docker run -e`) wins over the file.
 | Narration below 1× real time | on Windows, `triton-windows` is missing in `tts\env-a` (re-run the installer); or the GPU is busy |
 | `property 'upsample' ... has no setter` | wrong transformers in `env-c`: `pip install transformers==5.15.1` |
 | The app can't reach the server | Open the server's address in the phone's browser, starting with `https://` (`http://` with `RACCONTAMI_TLS=0`). A reachable server shows a certificate warning, which is expected because the certificate is its own, and then its page. No answer at all: the server is not running, the address or the network is wrong, or the firewall blocks it (next line) |
-| The page opens on the computer but the phone gets no answer (Windows) | The firewall. Run the `New-NetFirewallRule` line the installer printed, as administrator. If Windows once asked whether to allow Python and the answer was Cancel, it made rules that block it: open *Windows Defender Firewall with Advanced Security → Inbound Rules* and delete the blocking rules named Python |
+| The page opens on the computer but the phone gets no answer (Windows) | The firewall. Run the installer again and answer yes to its question about phones on your network (or run the `New-NetFirewallRule` line it prints, as administrator). If Windows once asked whether to allow Python and the answer was Cancel, it made rules that block it: open *Windows Defender Firewall with Advanced Security → Inbound Rules* and delete the blocking rules named Python |
 | A narration failed | `<home>/server-data/jobs/<id>/narrate.log`; Retry in the app keeps finished paragraphs |
 | Where the logs are | `<home>/server-data/server.log`; started without a window, also `window.log` beside it; as a Linux service, `journalctl -u raccontami` |
 | Disk filling up | delete folders in `<home>/server-data/jobs/` for books already on the phone |
