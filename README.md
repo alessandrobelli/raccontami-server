@@ -81,6 +81,9 @@ powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -Raccontami
 Then double-click `D:\raccontami\start-server.bat`. The script prints how to open the
 firewall port for your network and how to start the server at login.
 
+A computer that goes to sleep stops narrating, and continues when it wakes. For a long book,
+set **Settings → System → Power → Sleep** to *Never* while plugged in.
+
 ### Linux
 
 ```bash
@@ -97,16 +100,29 @@ docker build -f docker/Dockerfile -t raccontami-server .
 docker run --gpus all -p 8765:8765 -v raccontami-data:/data raccontami-server
 ```
 
-The first start downloads ~20 GB of models into `/data`. **Mount a persistent volume on
-`/data`**, so models, unfinished narrations and the token survive the machine being stopped.
+Pick a GPU with 16–24 GB (RTX 4090, L4, A5000 or similar). A 4090-class GPU narrates a
+10-hour book in about 3.5–4 hours. Stop the machine afterwards: the app has already
+downloaded the result.
 
-**Do not expose port 8765 to the internet over plain HTTP**: the token travels with every
-request. Use [Tailscale](https://tailscale.com) (install it on the server and the phone and
-use the server's `100.x.y.z` address), or put an HTTPS reverse proxy in front, e.g. Caddy:
-`raccontami.example.com { reverse_proxy localhost:8765 }`.
+The first start downloads ~20 GB of models into `/data`, and the server answers only when
+that is done. `docker logs -f <container>` shows the download, and then the token and the
+pairing code. **Mount a persistent volume on `/data`**, so models, unfinished narrations, the
+token and the certificate survive the machine being stopped. Without one, every restart
+downloads the models again and the app has to be paired again.
 
-A 4090-class GPU narrates a 10-hour book in about 3.5–4 hours. Stop the machine afterwards:
-the app has already downloaded the result.
+**Keep port 8765 off the open internet.** Two ways to reach the server from the phone:
+
+- **[Tailscale](https://tailscale.com)**: install it on the server and on the phone, and use
+  the server's Tailscale address in the app (`https://100.x.y.z:8765`). The app is paired once,
+  as on a home network (see [Your network](#your-network)).
+- **An HTTPS reverse proxy with a domain**: the proxy does the encryption, so start the server
+  with `RACCONTAMI_TLS=0` (in Docker: `-e RACCONTAMI_TLS=0`) and let only the proxy reach port
+  8765. With Caddy: `raccontami.example.com { reverse_proxy localhost:8765 }`. Enter
+  `https://raccontami.example.com` in the app; there is no pairing code, because the
+  certificate is a public one.
+
+Never publish the port with `RACCONTAMI_TLS=0` and nothing in front: the token travels
+unencrypted with every request.
 
 ## Your network
 
@@ -201,8 +217,10 @@ real person.
 | The first narration of a language "prepares the voice" for 3–4 min | VoxCPM2 is compiling; the result is cached, later starts take under a minute |
 | Narration below 1× real time | on Windows, `triton-windows` is missing in `tts\env-a` (re-run the installer); or the GPU is busy |
 | `property 'upsample' ... has no setter` | wrong transformers in `env-c`: `pip install transformers==5.15.1` |
-| The app can't reach the server | firewall, wrong address, or another network; the address in a phone browser should answer `{"detail":"bad token"}` |
+| The app can't reach the server | Open the server's address in the phone's browser, starting with `https://` (`http://` with `RACCONTAMI_TLS=0`). A reachable server shows a certificate warning, which is expected because the certificate is its own, and then its page. No answer at all: the server is not running, the address or the network is wrong, or the firewall blocks it (next line) |
+| The page opens on the computer but the phone gets no answer (Windows) | The firewall. Run the `New-NetFirewallRule` line the installer printed, as administrator. If Windows once asked whether to allow Python and the answer was Cancel, it made rules that block it: open *Windows Defender Firewall with Advanced Security → Inbound Rules* and delete the blocking rules named Python |
 | A narration failed | `<home>/server-data/jobs/<id>/narrate.log`; Retry in the app keeps finished paragraphs |
+| Where the logs are | `<home>/server-data/server.log`; started without a window, also `window.log` beside it; as a Linux service, `journalctl -u raccontami` |
 | Disk filling up | delete folders in `<home>/server-data/jobs/` for books already on the phone |
 
 ## How it works
