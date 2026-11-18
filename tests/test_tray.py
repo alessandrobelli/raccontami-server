@@ -41,19 +41,23 @@ class TrayTest(unittest.TestCase):
         rows = connect_window.facts("http://192.168.1.4:8765", "abc", "token.txt", None)
         self.assertIn("no code to compare", connect_window.as_text(rows))
 
-    def test_being_switched_off_never_raises_and_gives_no_icon(self):
-        said = []
+    def switched_off(self, check):
         import os
         before = os.environ.get("RACCONTAMI_TRAY")
         os.environ["RACCONTAMI_TRAY"] = "0"
         try:
-            self.assertIsNone(tray.start("x", None, None, None, None, None, said.append))
+            check()
         finally:
             if before is None:
                 del os.environ["RACCONTAMI_TRAY"]
             else:
                 os.environ["RACCONTAMI_TRAY"] = before
-        self.assertIn("none", said[0])
+
+    def test_being_switched_off_never_raises_and_gives_no_icon(self):
+        self.switched_off(lambda: self.assertIsNone(tray.start("x", None, None, None, None, None, print)))
+
+    def test_being_switched_off_is_a_reason_for_no_icon(self):
+        self.switched_off(lambda: self.assertIsNotNone(tray.unavailable()))
 
 
 if __name__ == "__main__":
