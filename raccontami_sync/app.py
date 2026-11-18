@@ -46,7 +46,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import awake, connect_window, narrate, pipeline, single, tray, unfinished  # noqa: E402
+from . import aligners, awake, connect_window, narrate, pipeline, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
@@ -188,6 +188,8 @@ class JobState:
 # one job at a time on the GPU: a narration voice and Whisper together need ~12 GB
 ONE_JOB = os.environ.get("RACCONTAMI_ONE_JOB") == "1"
 pipeline.check_whisper_model(pipeline.WHISPER_MODEL)
+from whisper.tokenizer import LANGUAGES as WHISPER_LANGUAGES  # noqa: E402
+aligners.check(pipeline.ALIGN_MODELS, set(WHISPER_LANGUAGES), log)
 models = pipeline.Models(MODELS_DIR, one_job=ONE_JOB)
 jobs: dict[str, JobState] = {}
 work: "queue.Queue[str]" = queue.Queue()
@@ -410,6 +412,8 @@ async def _lifespan(_app):
     log(f"  voices: " + ", ".join(f"{LANG_NAMES.get(k, k)}: {v.get('label', v['engine'])}"
                                   for k, v in narrate.voices(DATA).items()))
     log(f"  sync: Whisper {pipeline.WHISPER_MODEL}" + ("; one job at a time on the GPU" if ONE_JOB else ""))
+    log("  languages: " + ", ".join(LANG_NAMES.get(k, k) + ("" if aligners.DEFAULTS.get(k) == m else f" ({m})")
+                                    for k, m in sorted(pipeline.ALIGN_MODELS.items())))
     log(f"  name: {NAME}   (shown in the app; set RACCONTAMI_NAME to change it)")
     # the token goes to the window only, never into a log: logs get shared when asking for help
     if HIDDEN:  # no window: what is printed ends in a file

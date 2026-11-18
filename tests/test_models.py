@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 try:
-    from raccontami_sync.pipeline import Models, check_whisper_model
+    from raccontami_sync.pipeline import Models, check_whisper_model, scan_corrections
 except ModuleNotFoundError as e:
     # the pipeline loads PyTorch; without it (as in the GitHub check) these tests are skipped
     raise unittest.SkipTest(f"the pipeline needs the server's Python environment: {e}")
@@ -34,6 +34,12 @@ class WhisperModelTest(unittest.TestCase):
     def test_an_unknown_model_is_refused(self):
         with self.assertRaises(ValueError):
             check_whisper_model("turbbo")
+
+
+class ScanCorrectionsTest(unittest.TestCase):
+    def test_a_language_without_a_word_list_is_synced(self):
+        # a language added in the settings may be one wordfreq has no list for
+        self.assertEqual([], scan_corrections(["gtattandosi"], ["grattandosi"], [0], [(0, 0)], [True], "xx"))
 
 
 if __name__ == "__main__":

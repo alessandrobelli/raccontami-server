@@ -14,7 +14,7 @@ compare with the server's window. `RACCONTAMI_TLS=0` gives plain HTTP on the sam
 
 `GET /v1/hello` (no token) → `{"app": "raccontami", "name", "version"}`. Used by the app's "Search local network" to recognize the server.
 
-`GET /v1/health` → `{"ok", "version", "name", "gpu", "queue", "languages": ["en","it"], "narration": {"it": "<voice label>", ...}}`
+`GET /v1/health` → `{"ok", "version", "name", "gpu", "queue", "languages": ["en","it"], "narration": {"it": "<voice label>", ...}}`. `languages`: those the server syncs, English and Italian plus any added with `RACCONTAMI_ALIGN_MODEL_<XX>`.
 
 ## Jobs (sync and narration)
 
