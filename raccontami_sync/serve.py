@@ -69,10 +69,8 @@ def main() -> None:
         try:
             cert, key = tls.ensure_certificate(DATA)
             start.update(ssl_certfile=str(cert), ssl_keyfile=str(key))
-            # app.py prints them in its start-up lines: the code, and how older apps show the same code
-            mark = tls.fingerprint(cert)
-            os.environ["RACCONTAMI_TLS_CODE"] = tls.digit_code(mark)
-            os.environ["RACCONTAMI_TLS_CODE_OLD"] = tls.short_code(mark)
+            # app.py prints it in its start-up lines, to compare with the code the app shows
+            os.environ["RACCONTAMI_TLS_CODE"] = tls.digit_code(tls.fingerprint(cert))
         except ImportError:
             # an install from before the encrypted link, updated without its new package
             print('          NOT ENCRYPTED: the "cryptography" package is missing. Run the installer again '

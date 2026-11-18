@@ -123,9 +123,7 @@ can be copied.
    like `https://192.168.1.20:8765`.)
 3. The app shows a **code** of twenty digits, like `0458 4939 0331 2265 6608`. Compare it with the
    server's. The same: confirm. Different: something between the phone and the computer is
-   pretending to be the server; do not confirm. (Until version 0.2 the same code was written with
-   letters, like `3fa9-07c2-b1d4-88e0`. The app and the server each show both forms, so one that
-   is not yet updated can still be paired with one that is.)
+   pretending to be the server; do not confirm.
 4. Enter the **token**, the server's password, and tap **Test and save**. The app answers with the
    server's name and graphics card.
 

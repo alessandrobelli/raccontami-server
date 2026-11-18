@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from raccontami_sync import connect_window, serve, version
-from raccontami_sync.tls import digit_code, short_code
+from raccontami_sync import serve, version
+from raccontami_sync.tls import digit_code
 
 
 class DigitCodeTest(unittest.TestCase):
@@ -17,13 +17,9 @@ class DigitCodeTest(unittest.TestCase):
     def test_the_largest_start_of_a_fingerprint_still_fits(self):
         self.assertEqual("1844 6744 0737 0955 1615", digit_code("f" * 64))
 
-    def test_it_is_the_same_number_as_the_older_code(self):
+    def test_it_is_the_start_of_the_fingerprint_as_a_number(self):
         mark = "3fa907c2b1d488e0" + "0" * 48
-        self.assertEqual(int(short_code(mark).replace("-", ""), 16), int(digit_code(mark).replace(" ", "")))
-
-    def test_the_older_form_is_said_next_to_the_digits_for_an_app_not_yet_updated(self):
-        rows = connect_window.facts("https://x:8765", "abc", "token.txt", "0000 0000 0000 0000 0001", "0000-0000-0000-0001")
-        self.assertIn("0000-0000-0000-0001", rows[2][2])
+        self.assertEqual(0x3fa907c2b1d488e0, int(digit_code(mark).replace(" ", "")))
 
 
 class VersionTest(unittest.TestCase):
