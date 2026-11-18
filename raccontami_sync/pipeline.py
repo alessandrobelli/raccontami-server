@@ -20,16 +20,14 @@ import numpy as np
 import torch
 import torchaudio.functional as AF
 
+from .aligners import align_models
 from .matcher import match
 from .textnorm import norm_parts, strip_accents
 
 SR = 16000
 # finds the anchors only (wav2vec2 does the word times): turbo is close to large-v3 and several times faster
 WHISPER_MODEL = os.environ.get("RACCONTAMI_WHISPER_MODEL", "turbo")
-ALIGN_MODELS = {
-    "en": "facebook/wav2vec2-large-960h-lv60-self",
-    "it": "jonatasgrosman/wav2vec2-large-xlsr-53-italian",
-}
+ALIGN_MODELS = align_models(os.environ)  # language -> model that times the words (see aligners.py)
 STAGES = [("decode", 0.02), ("transcribe", 0.83), ("match", 0.01), ("align", 0.14)]
 WINDOW_S = 25.0
 
@@ -105,11 +103,12 @@ class Models:
 
 class Aligner:
     def __init__(self, model_id: str):
-        from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+        # any CTC model that writes letters (wav2vec2, HuBERT, WavLM): they share wav2vec2's processor
+        from transformers import AutoModelForCTC, Wav2Vec2Processor
 
         self.model_id = model_id
         self.proc = Wav2Vec2Processor.from_pretrained(model_id)
-        self.model = Wav2Vec2ForCTC.from_pretrained(model_id).to("cuda").eval()
+        self.model = AutoModelForCTC.from_pretrained(model_id).to("cuda").eval()
         self.vocab = self.proc.tokenizer.get_vocab()
         self.blank = self.proc.tokenizer.pad_token_id
         self.sep = self.vocab.get("|")
@@ -463,6 +462,11 @@ def scan_corrections(A, B, owner, pairs, spoken, lang, tokens=None):
     freq = Counter(A)
     parts = Counter(owner)
     out = {}
+    try:  # a language added in the settings may have no word list: then only the first two rules
+        zipf("a", lang)
+        has_word_list = True
+    except LookupError:
+        has_word_list = False
 
     def consider(i, j):
         a, b = A[i], B[j]
@@ -473,7 +477,7 @@ def scan_corrections(A, B, owner, pairs, spoken, lang, tokens=None):
         # a recognition error a scan repeats ("nna" for "una") is not rare, but
         # still dwarfed by the real word
         repeated_error = fa <= 15 and fb >= 20 * fa
-        not_a_word = fa == 1 and zipf(a, lang) == 0 and zipf(b, lang) >= 1.0
+        not_a_word = has_word_list and fa == 1 and zipf(a, lang) == 0 and zipf(b, lang) >= 1.0
         if not (rare or repeated_error or not_a_word) or not b.isalpha() or len(b) < 2:
             return
         if tokens is not None and not _ocr_plausible(tokens[owner[i]], a, b):
