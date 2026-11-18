@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import paths
+from . import gpu_share, paths
 from .jsonfile import read_json, write_json
 from .pipeline import ALIGN_MODELS, SR, Models, Progress, Result, fill_missing
 from .textnorm import norm_parts
@@ -203,8 +203,10 @@ def _to_16k(wav: np.ndarray, sr: int) -> np.ndarray:
     return F.resample(torch.from_numpy(wav), sr, SR).numpy()
 
 
-def _run_worker(job: Path, voice: dict, on_piece, stop, note=lambda msg: None) -> None:
+def _run_worker(job: Path, voice: dict, on_piece, stop, note=lambda msg: None, share_file: Path | None = None) -> None:
     env = dict(os.environ)
+    if share_file is not None:
+        env["RACCONTAMI_GPU_SHARE_FILE"] = str(share_file)  # the voice paces itself by it (gpu_share.py)
     env.update({
         "PYTHONIOENCODING": "utf-8", "OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2",
         "HF_HOME": env.get("HF_HOME", str(MODELS / "hf")),
@@ -434,7 +436,7 @@ def run(models: Models, job: Path, data: Path, progress: Progress, stop=lambda: 
             align(i)
             maybe_release()
 
-        _run_worker(job, plan["voice"], on_piece, stop, note)
+        _run_worker(job, plan["voice"], on_piece, stop, note, share_file=data / gpu_share.FILE)
         if stop():
             raise InterruptedError("stopped")
         missing = [p["i"] for p in spoken if not wav_of(p["i"]).exists()]

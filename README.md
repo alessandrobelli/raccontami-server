@@ -180,6 +180,19 @@ While a sync or a narration runs, the server keeps Windows from going to sleep b
 work ends or is put on hold, the computer sleeps as usual. Closing a laptop's lid still puts it to
 sleep: the narration then continues when it wakes. `RACCONTAMI_KEEP_AWAKE=0` switches this off.
 
+### Using the computer while it works
+
+A sync or a narration takes the whole graphics card, which can make the computer slow to use. At
+the top of the server's page, **Graphics card** sets how much of it the work may take: **Full
+speed**, **Half** or **A quarter**. Below full, the work pauses after each step (a window of audio,
+a sentence of a narration) for as long as the share asks: at half, it rests as long as it worked.
+The change applies at once, also to a job that is running, and lasts until the server stops; the
+setting `RACCONTAMI_GPU_SHARE` gives the share at each start.
+
+The work takes longer in the same proportion: at half, about twice as long. The models still use
+the same graphics memory, so for a game that needs all of it, **Put everything on hold** is still
+the better choice.
+
 ### Listening before the end
 
 While a long book is narrated, the finished beginning is published in growing parts (a quarter of
@@ -313,6 +326,7 @@ as an environment variable (a service file, `docker run -e`) wins over the file.
 | Setting | Default | |
 |---|---|---|
 | `RACCONTAMI_NAME` | computer name | how the app names this server |
+| `RACCONTAMI_GPU_SHARE` | 100 | how much of the graphics card the work may take, in %, from 10 to 100: below 100 it pauses between steps, so the computer stays usable (see [Using the computer while it works](#using-the-computer-while-it-works)). The server's page changes it while it runs |
 | `RACCONTAMI_ONE_JOB` | off | `1`: syncs and narrations take turns on the GPU, for GPUs under 12 GB (see below) |
 | `RACCONTAMI_TLS` | on | `0`: plain HTTP instead of the encrypted link (see [Your network](#your-network)) |
 | `RACCONTAMI_KEEP_AWAKE` | on | `0`: Windows may go to sleep while a job runs |

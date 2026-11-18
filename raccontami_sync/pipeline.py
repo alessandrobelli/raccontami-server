@@ -21,6 +21,7 @@ import torch
 import torchaudio.functional as AF
 
 from .aligners import align_models
+from .gpu_share import Pacer
 from .matcher import match
 from .textnorm import norm_parts, strip_accents
 
@@ -50,10 +51,13 @@ class Models:
     """Lazily loaded models, released after a period without jobs.
 
     [one_job]: syncs and narrations take turns on the GPU (hold [turn] for a whole job),
-    for GPUs too small for a narration voice and Whisper at the same time."""
+    for GPUs too small for a narration voice and Whisper at the same time.
+    [gpu_share]: the share of the card the work may take, in % (see gpu_share.py)."""
 
-    def __init__(self, cache_dir: Path, idle_unload_s: float = 600, one_job: bool = False):
+    def __init__(self, cache_dir: Path, idle_unload_s: float = 600, one_job: bool = False,
+                 gpu_share: Callable[[], int] = lambda: 100):
         self.cache_dir = cache_dir
+        self.gpu_share = gpu_share
         self.idle_unload_s = idle_unload_s
         self.lock = threading.Lock()
         self.turn = threading.Lock() if one_job else contextlib.nullcontext()
@@ -188,13 +192,16 @@ def transcribe(models: Models, audio: np.ndarray, lang: str, progress: Progress)
     # whisper.transcribe is shadowed by the function of the same name; take the module
     wt = sys.modules["whisper.transcribe"]
 
+    pacer = Pacer(models.gpu_share)
+
     class _Bar:
         def __init__(self, total=None, **_):
             self.total, self.n = total or 1, 0
 
-        def update(self, k):
+        def update(self, k):  # Whisper calls it after each window of audio
             self.n += k
             progress("transcribe", min(1.0, self.n / self.total))
+            pacer.step()
 
         def __enter__(self):
             return self
@@ -356,6 +363,7 @@ def run(models: Models, audio_path: Path, tokens: list[str], lang: str, progress
     times = [None] * len(A)
     with models.lock:
         aligner = models.get_aligner(lang)
+        pacer = Pacer(models.gpu_share)
         for n, w in enumerate(windows):
             idxs = [k for k in range(w["start_i"], w["end_i"] + 1) if spoken[k]]
             s0, s1 = int(w["t0"] * SR), int(w["t1"] * SR)
@@ -363,6 +371,7 @@ def run(models: Models, audio_path: Path, tokens: list[str], lang: str, progress
                 if r is not None:
                     times[k] = (w["t0"] + r[0], w["t0"] + r[1])
             progress("align", (n + 1) / max(1, len(windows)))
+            pacer.step()
     ctc_timed = sum(t is not None for t in times)
     times = fill_missing(times, spoken, A)
 

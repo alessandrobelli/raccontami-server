@@ -95,6 +95,16 @@
   <section id="content" hidden>
     <h2 data-t="work">Work</h2>
     <div id="work">
+      <div class="card" id="shareCard">
+        <div class="row">
+          <span class="state" style="margin-right:6px" data-t="shareTitle">Graphics card</span>
+          <button type="button" data-share="100" data-t="shareFull">Full speed</button>
+          <button type="button" data-share="50" data-t="shareHalf">Half</button>
+          <button type="button" data-share="25" data-t="shareQuarter">A quarter</button>
+          <span class="muted small" id="shareOther" hidden></span>
+        </div>
+        <p class="muted small" style="margin-top:8px" data-t="shareNote">Less leaves the computer usable while it works.</p>
+      </div>
       <div class="row" id="all" style="margin-bottom:12px" hidden>
         <button id="holdAll" type="button" data-t="holdAll">Put everything on hold</button>
         <button id="continueAll" type="button" data-t="continueAll">Continue what is on hold</button>
@@ -177,6 +187,8 @@ const TEXTS = {
     confirmDoneNarr: "Delete the finished narration “{0}” from this computer?\n\nThe story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
     confirmDoneSync: "Delete the finished sync “{0}” from this computer?\n\nThe story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
     deleteAll: "Delete all {0}",
+    shareTitle: "Graphics card", shareFull: "Full speed", shareHalf: "Half", shareQuarter: "A quarter", shareNow: "now {0} %",
+    shareNote: "Less leaves the computer usable while it works: the work pauses between its steps and takes longer. It applies at once, also to what is running, until the server stops.",
     confirmDoneAll: "Delete all {0} finished jobs from this computer ({1})?\n\nA story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
     fName: "Name", fGpu: "Graphics card", gpuNone: "none found", fFree: "Free disk space",
     freeLow: "{0}: little is left. A narrated book needs a few GB while it is made", fVersion: "Version",
@@ -227,6 +239,8 @@ const TEXTS = {
     confirmDoneNarr: "Eliminare da questo computer la narrazione finita “{0}”?\n\nLa storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
     confirmDoneSync: "Eliminare da questo computer la sincronizzazione finita “{0}”?\n\nLa storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
     deleteAll: "Elimina tutti i {0}",
+    shareTitle: "Scheda grafica", shareFull: "Piena velocità", shareHalf: "Metà", shareQuarter: "Un quarto", shareNow: "ora {0} %",
+    shareNote: "Meno lascia il computer usabile mentre lavora: il lavoro fa una pausa tra un passo e l'altro e dura di più. Vale subito, anche per quello che è in corso, finché il server non si ferma.",
     confirmDoneAll: "Eliminare da questo computer tutti i {0} lavori finiti ({1})?\n\nUna storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
     fName: "Nome", fGpu: "Scheda grafica", gpuNone: "nessuna trovata", fFree: "Spazio libero su disco",
     freeLow: "{0}: ne resta poco. Un libro narrato occupa qualche GB mentre viene fatto", fVersion: "Versione",
@@ -277,6 +291,8 @@ const TEXTS = {
     confirmDoneNarr: "Biten “{0}” seslendirmesi bu bilgisayardan silinsin mi?\n\nTelefon hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
     confirmDoneSync: "Biten “{0}” eşitlemesi bu bilgisayardan silinsin mi?\n\nTelefon hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
     deleteAll: "{0} işin hepsini sil",
+    shareTitle: "Ekran kartı", shareFull: "Tam hız", shareHalf: "Yarısı", shareQuarter: "Dörtte biri", shareNow: "şu an %{0}",
+    shareNote: "Daha azı, çalışırken bilgisayarı kullanılabilir bırakır: iş, adımları arasında durur ve daha uzun sürer. Hemen, sürmekte olan iş için de geçerlidir; sunucu durana kadar.",
     confirmDoneAll: "Biten {0} işin hepsi bu bilgisayardan silinsin mi ({1})?\n\nTelefon bir hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
     fName: "Ad", fGpu: "Ekran kartı", gpuNone: "bulunamadı", fFree: "Boş disk alanı",
     freeLow: "{0}: az kaldı. Seslendirilen bir kitap yapılırken birkaç GB yer tutar", fVersion: "Sürüm",
@@ -324,8 +340,10 @@ for (const code of Object.keys(TEXTS)) {
   $("langs").append(b);
 }
 
-async function api(method, path) {
-  const r = await fetch(path, { method, headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+async function api(method, path, json) {
+  const headers = { Authorization: "Bearer " + token };
+  if (json !== undefined) headers["Content-Type"] = "application/json";
+  const r = await fetch(path, { method, headers, cache: "no-store", body: json === undefined ? undefined : JSON.stringify(json) });
   let body = null;
   try { body = await r.json(); } catch (e) { /* no body */ }
   if (!r.ok) {
@@ -590,6 +608,19 @@ function showDone(list) {
   }
 }
 
+// The share of the graphics card: the button for it pressed, or the number when the setting chose another
+function showShare(share) {
+  let known = false;
+  for (const b of document.querySelectorAll("[data-share]")) {
+    const on = Number(b.dataset.share) === share;
+    known = known || on;
+    b.classList.toggle("primary", on);
+    b.setAttribute("aria-pressed", String(on));
+  }
+  $("shareOther").hidden = known;
+  $("shareOther").textContent = known ? "" : t("shareNow", share);
+}
+
 function fact(dl, name, value) {
   if (value == null || value === "") return;
   dl.append(el("dt", name), el("dd", String(value)));
@@ -611,6 +642,7 @@ async function refresh() {
     const shown = jobs.filter(j => j.state !== "done");
     showJobs(shown);
     showDone(jobs.filter(j => j.state === "done"));
+    showShare(health.gpuShare ?? 100);
     $("none").hidden = shown.length > 0;
     // for everything at once, as in the icon's menu: worth showing when there is more than one job to press
     const canHold = shown.filter(j => j.can.hold).length, onHold = shown.filter(j => j.state === "held").length;
@@ -686,6 +718,14 @@ for (const [id, path] of [["holdAll", "/v1/hold"], ["continueAll", "/v1/continue
       const r = await api("POST", path);
       if (r && r.message) setRefused(said(r.message));
     } catch (e) { setRefused(e.message); }
+    refresh();
+  });
+}
+for (const b of document.querySelectorAll("[data-share]")) {
+  b.addEventListener("click", async () => {
+    setRefused("");
+    try { showShare((await api("POST", "/v1/gpu-share", { share: Number(b.dataset.share) })).share); }
+    catch (e) { setRefused(e.message); }
     refresh();
   });
 }
