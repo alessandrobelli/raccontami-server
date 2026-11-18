@@ -191,7 +191,8 @@ class Tray:
 
 def start(name: str, summary, can, hold_all, continue_all, quit_server, log, port: int | None = None,
           folder=None, connect=None) -> Tray | None:
-    """Shows the icon, or says in one line why not. Never raises: the server starts either way.
+    """Shows the icon, or None when there is none (unavailable() says why). Never raises: the
+    server starts either way.
 
     summary()      -> (kind, text): kind is "working", "hold" or "idle"; text is one short line
     can()          -> {"hold": bool, "continue": bool}
@@ -199,6 +200,16 @@ def start(name: str, summary, can, hold_all, continue_all, quit_server, log, por
     continue_all() -> the same
     quit_server()  -> stops the server, leaving unfinished work to be asked about at the next start
     """
+    if unavailable():
+        return None
+    tray = Tray(name, own_port() if port is None else port, summary, can, hold_all, continue_all, quit_server, log,
+                folder=folder, connect=connect)
+    tray.start()
+    return tray
+
+
+def unavailable() -> str | None:
+    """Why there is no icon, or None when there can be one: why_not(), or its packages missing."""
     reason = why_not()
     if reason is None:
         try:
@@ -206,12 +217,4 @@ def start(name: str, summary, can, hold_all, continue_all, quit_server, log, por
             import pystray  # noqa: F401
         except ImportError:
             reason = 'the packages "pystray" and "Pillow" are not installed (run the installer again)'
-    if reason:
-        log(f"  icon next to the clock: none, {reason}")
-        return None
-    tray = Tray(name, own_port() if port is None else port, summary, can, hold_all, continue_all, quit_server, log,
-                folder=folder, connect=connect)
-    tray.start()
-    log("  icon next to the clock: yes (Windows may keep it behind the small arrow there). It opens the page, "
-        "puts the work on hold and stops the server")
-    return tray
+    return reason

@@ -46,7 +46,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import aligners, awake, connect_window, narrate, pipeline, single, tray, unfinished  # noqa: E402
+from . import aligners, awake, banner, connect_window, narrate, pipeline, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
@@ -66,6 +66,17 @@ def log(msg: str) -> None:
     try:
         with open(LOG, "a", encoding="utf-8") as f:
             f.write(time.strftime("%Y-%m-%d ", now) + line + "\n")
+    except OSError:
+        pass
+
+
+def log_block(lines: list[str], shown: list[str] | None = None) -> None:
+    """Lines under the last log line, with no time of their own (banner.py): [shown] in the window
+    ([lines] when None), [lines] in server.log, moved under the date there."""
+    print("\n".join(lines if shown is None else shown), flush=True)
+    try:
+        with open(LOG, "a", encoding="utf-8") as f:
+            f.write("".join(" " * len("2026-01-01 ") + line + "\n" for line in lines))
     except OSError:
         pass
 
@@ -406,46 +417,51 @@ async def _lifespan(_app):
     threading.Thread(target=_narration_worker, daemon=True).start()
     import torch
 
-    gpu = _gpu_name() or "no CUDA GPU found"
-    log("Raccontami server started")
-    log(f"  GPU: {gpu}")
-    log(f"  voices: " + ", ".join(f"{LANG_NAMES.get(k, k)}: {v.get('label', v['engine'])}"
-                                  for k, v in narrate.voices(DATA).items()))
-    log(f"  sync: Whisper {pipeline.WHISPER_MODEL}" + ("; one job at a time on the GPU" if ONE_JOB else ""))
-    log("  languages: " + ", ".join(LANG_NAMES.get(k, k) + ("" if aligners.DEFAULTS.get(k) == m else f" ({m})")
-                                    for k, m in sorted(pipeline.ALIGN_MODELS.items())))
-    log(f"  name: {NAME}   (shown in the app; set RACCONTAMI_NAME to change it)")
-    # the token goes to the window only, never into a log: logs get shared when asking for help
-    if HIDDEN:  # no window: what is printed ends in a file
-        log(f"  token for the app: in {DATA / 'token.txt'} (the icon's menu shows it: Connect the phone)")
-    else:
-        print(f"          token for the app: {TOKEN}", flush=True)
-        log(f"  token for the app: shown above, and in {DATA / 'token.txt'}")
     code = os.environ.get("RACCONTAMI_TLS_CODE")  # set by serve.py when the link is encrypted
     old_code = os.environ.get("RACCONTAMI_TLS_CODE_OLD")
-    if code:
-        log(f"  encrypted link: yes. The app shows this code when it connects; check that it is the same: {code}")
-        if old_code:
-            log(f"    (an app from before version 0.2 shows the same code as {old_code})")
-    else:
-        log("  encrypted link: no (plain HTTP). Others on the same network can read what passes; see the README")
     address = tray.lan_address()
     for_phone = tray.own_url().replace("localhost", address).rstrip("/") if address else None
-    if for_phone:
-        log(f"  address for the app: {for_phone}   (or \"Search local network\" in the app)")
-    log(f"  data: {DATA}")
+    token_file = DATA / "token.txt"
     waiting = [j for j in jobs.values() if j.state == "queued"]
-    if waiting:
-        log(f"  resuming {len(waiting)} unfinished job(s): " + ", ".join(j.label() for j in waiting))
     held = [j for j in jobs.values() if j.state == unfinished.HELD]
-    if held:
-        log(f"  on hold, not worked on: " + ", ".join(j.label() for j in held)
-            + ". Continue them from the server's page, or start the server in a window to be asked again")
-    log(f"  page: this server's address in a browser (on this computer: {tray.own_url()}) "
-        "shows the work, and can put it on hold or continue it")
     # the token is read by somebody at this computer, as in the window; with RACCONTAMI_TOKEN there is no file
     icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA,
-                      connect=lambda: connect_window.facts(for_phone, TOKEN, DATA / "token.txt", code, old_code))
+                      connect=lambda: connect_window.facts(for_phone, TOKEN, token_file, code, old_code))
+
+    def startup(token: str | None) -> list[str]:
+        """The start-up block; [token] None says which file holds it instead."""
+        voices = narrate.voices(DATA)
+        return banner.render([
+            ("CONNECT THE PHONE   in the app: Settings, then the server's settings",
+             connect_window.facts(for_phone, token, token_file, code, old_code)),
+            ("THIS SERVER", [
+                ("Name", NAME, "Shown in the app. RACCONTAMI_NAME changes it."),
+                ("GPU", _gpu_name() or "no CUDA GPU found", ""),
+                ("Data", str(DATA), ""),
+                ("Page", tray.own_url(), "Open it in a browser: it shows the work, puts it on hold or continues it."),
+                ("Icon", "next to the clock" if icon else "none",
+                 "Opens the page and the Connect window, puts the work on hold, stops the server. Windows may "
+                 "keep it behind the small arrow there." if icon else tray.unavailable() or ""),
+            ]),
+            ("MODELS", [
+                ("Sync", f"Whisper {pipeline.WHISPER_MODEL}",
+                 "Syncs and narrations take turns on the GPU (RACCONTAMI_ONE_JOB)." if ONE_JOB else ""),
+                ("Languages", ", ".join(LANG_NAMES.get(k, k) + ("" if aligners.DEFAULTS.get(k) == m else f" ({m})")
+                                        for k, m in sorted(pipeline.ALIGN_MODELS.items())), ""),
+                ("Voices", "\n".join(f"{LANG_NAMES.get(k, k)}: {v.get('label', v['engine'])}"
+                                     for k, v in voices.items()), ""),
+            ]),
+            ("UNFINISHED WORK",
+             ([("Resuming", "\n".join(j.label() for j in waiting), "")] if waiting else [])
+             + ([("On hold", "\n".join(j.label() for j in held),
+                  "Not worked on. Continue them from the server's page, or start the server in a window to be "
+                  "asked again.")] if held else [])),
+        ])
+
+    log(f"Raccontami server {VERSION} is running")
+    # the token goes to the window only, never into a log: logs get shared when asking for help.
+    # Without a window what is printed ends in a file, so the token is not printed then either.
+    log_block(startup(None), shown=startup(None if HIDDEN else TOKEN))
     if icon is not None and HIDDEN:  # no window: without a word, a double click would seem to do nothing
         icon.announce("The server is running. This icon opens its page, shows how to connect the phone, and stops it."
                       + (f" {len(held)} unfinished job(s) are kept on hold: continue them from this icon's menu."
