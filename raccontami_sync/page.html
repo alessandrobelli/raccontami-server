@@ -106,6 +106,7 @@
       <div class="card" id="doneCard" hidden>
         <p id="doneSummary"></p>
         <p class="muted small" style="margin-top:6px" data-t="doneNote">The phone has its own copy of a story once it has downloaded it.</p>
+        <div class="row" id="doneAll" style="margin-top:10px" hidden><button id="deleteDone" class="danger" type="button">Delete all</button></div>
         <details class="more" id="doneMore"><summary>Show them</summary><div id="done"></div></details>
       </div>
     </div>
@@ -175,6 +176,8 @@ const TEXTS = {
     showIt: "Show it", showThem: "Show them", narration: "Narration", sync: "Sync", finishedAt: "finished {0}",
     confirmDoneNarr: "Delete the finished narration “{0}” from this computer?\n\nThe story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
     confirmDoneSync: "Delete the finished sync “{0}” from this computer?\n\nThe story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
+    deleteAll: "Delete all {0}",
+    confirmDoneAll: "Delete all {0} finished jobs from this computer ({1})?\n\nA story stays on the phone if the phone has already downloaded it. If it has not, it has to be sent again from the app, and the work is done again.\n\nThis cannot be undone.",
     fName: "Name", fGpu: "Graphics card", gpuNone: "none found", fFree: "Free disk space",
     freeLow: "{0}: little is left. A narrated book needs a few GB while it is made", fVersion: "Version",
     check: "Check for a newer version", checkNote: "The check asks GitHub, and only when you press it.", checking: "Asking GitHub…",
@@ -223,6 +226,8 @@ const TEXTS = {
     showIt: "Mostralo", showThem: "Mostrali", narration: "Narrazione", sync: "Sincronizzazione", finishedAt: "finito {0}",
     confirmDoneNarr: "Eliminare da questo computer la narrazione finita “{0}”?\n\nLa storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
     confirmDoneSync: "Eliminare da questo computer la sincronizzazione finita “{0}”?\n\nLa storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
+    deleteAll: "Elimina tutti i {0}",
+    confirmDoneAll: "Eliminare da questo computer tutti i {0} lavori finiti ({1})?\n\nUna storia resta sul telefono se il telefono l'ha già scaricata. Se non l'ha fatto, va mandata di nuovo dall'app e il lavoro viene rifatto.\n\nNon si può annullare.",
     fName: "Nome", fGpu: "Scheda grafica", gpuNone: "nessuna trovata", fFree: "Spazio libero su disco",
     freeLow: "{0}: ne resta poco. Un libro narrato occupa qualche GB mentre viene fatto", fVersion: "Versione",
     check: "Controlla se c'è una versione più recente", checkNote: "Il controllo chiede a GitHub, e solo quando premi il pulsante.", checking: "Chiedo a GitHub…",
@@ -271,6 +276,8 @@ const TEXTS = {
     showIt: "Göster", showThem: "Göster", narration: "Seslendirme", sync: "Eşitleme", finishedAt: "bitiş: {0}",
     confirmDoneNarr: "Biten “{0}” seslendirmesi bu bilgisayardan silinsin mi?\n\nTelefon hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
     confirmDoneSync: "Biten “{0}” eşitlemesi bu bilgisayardan silinsin mi?\n\nTelefon hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
+    deleteAll: "{0} işin hepsini sil",
+    confirmDoneAll: "Biten {0} işin hepsi bu bilgisayardan silinsin mi ({1})?\n\nTelefon bir hikâyeyi indirdiyse hikâye telefonda kalır. İndirmediyse uygulamadan yeniden gönderilmesi gerekir ve iş yeniden yapılır.\n\nBu geri alınamaz.",
     fName: "Ad", fGpu: "Ekran kartı", gpuNone: "bulunamadı", fFree: "Boş disk alanı",
     freeLow: "{0}: az kaldı. Seslendirilen bir kitap yapılırken birkaç GB yer tutar", fVersion: "Sürüm",
     check: "Daha yeni bir sürüm var mı, bak", checkNote: "Denetim GitHub'a sorar, yalnızca düğmeye bastığında.", checking: "GitHub'a soruluyor…",
@@ -546,9 +553,14 @@ const languageName = name => name && TEXTS.en["lang_" + name] ? t("lang_" + name
 // Finished jobs: how much room they take, and a way to delete each. The list is built again only
 // when it changes, so a button is not swapped away while it is being pressed.
 let doneShape = "";
+let doneList = []; // what "Delete all" deletes: the list as last shown
 
 function showDone(list) {
   $("doneHead").hidden = $("doneCard").hidden = list.length === 0;
+  doneList = list;
+  const deletable = list.filter(j => j.can.delete).length;
+  $("doneAll").hidden = deletable < 2;  // one is deleted with its own button
+  $("deleteDone").textContent = t("deleteAll", count(deletable));
   const shape = JSON.stringify(list.map(j => [j.id, (j.details || {}).bytes]));
   if (shape === doneShape) return;
   doneShape = shape;
@@ -677,6 +689,22 @@ for (const [id, path] of [["holdAll", "/v1/hold"], ["continueAll", "/v1/continue
     refresh();
   });
 }
+$("deleteDone").addEventListener("click", async () => {
+  const list = doneList.filter(j => j.can.delete);
+  const total = list.reduce((sum, j) => sum + ((j.details || {}).bytes || 0), 0);
+  if (!list.length || !confirm(t("confirmDoneAll", count(list.length), size(total)))) return;
+  const b = $("deleteDone");
+  b.disabled = true;
+  setRefused("");
+  try {
+    for (const j of list) {
+      try { await api("DELETE", "/v1/jobs/" + encodeURIComponent(j.id)); }
+      catch (e) { if (e.status !== 404) throw e; }  // already gone, deleted from the phone meanwhile
+    }
+  } catch (e) { setRefused(e.message); }
+  b.disabled = false;
+  refresh();
+});
 $("check").addEventListener("click", checkVersion);
 $("showToken").addEventListener("change", () => { $("token").type = $("showToken").checked ? "text" : "password"; });
 $("notice").addEventListener("click", () => setRefused(""));
