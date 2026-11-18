@@ -4,18 +4,13 @@ import unittest
 from pathlib import Path
 
 from raccontami_sync import serve
-from raccontami_sync.tls import ensure_certificate, fingerprint, short_code
+from raccontami_sync.tls import ensure_certificate, fingerprint
 
 try:
     import cryptography  # noqa: F401
     HAVE_CRYPTOGRAPHY = True
 except ImportError:  # part of the server's environment, not of the GitHub check
     HAVE_CRYPTOGRAPHY = False
-
-
-class ShortCodeTest(unittest.TestCase):
-    def test_the_code_is_the_start_of_the_fingerprint_in_fours(self):
-        self.assertEqual("0123-4567-89ab-cdef", short_code("0123456789abcdef" + "0" * 48))
 
 
 class ServeOptionsTest(unittest.TestCase):

@@ -418,7 +418,6 @@ async def _lifespan(_app):
     import torch
 
     code = os.environ.get("RACCONTAMI_TLS_CODE")  # set by serve.py when the link is encrypted
-    old_code = os.environ.get("RACCONTAMI_TLS_CODE_OLD")
     address = tray.lan_address()
     for_phone = tray.own_url().replace("localhost", address).rstrip("/") if address else None
     token_file = DATA / "token.txt"
@@ -426,14 +425,14 @@ async def _lifespan(_app):
     held = [j for j in jobs.values() if j.state == unfinished.HELD]
     # the token is read by somebody at this computer, as in the window; with RACCONTAMI_TOKEN there is no file
     icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA,
-                      connect=lambda: connect_window.facts(for_phone, TOKEN, token_file, code, old_code))
+                      connect=lambda: connect_window.facts(for_phone, TOKEN, token_file, code))
 
     def startup(token: str | None) -> list[str]:
         """The start-up block; [token] None says which file holds it instead."""
         voices = narrate.voices(DATA)
         return banner.render([
             ("CONNECT THE PHONE   in the app: Settings, then the server's settings",
-             connect_window.facts(for_phone, token, token_file, code, old_code)),
+             connect_window.facts(for_phone, token, token_file, code)),
             ("THIS SERVER", [
                 ("Name", NAME, "Shown in the app. RACCONTAMI_NAME changes it."),
                 ("GPU", _gpu_name() or "no CUDA GPU found", ""),
