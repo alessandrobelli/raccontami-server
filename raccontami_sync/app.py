@@ -14,6 +14,7 @@
                              the latest N, its audio length and its last token)
   DELETE /v1/jobs/{id}       -> stops a narration and deletes its pieces (the story was deleted on the phone),
                                 or deletes a sync the server is not working on (409 while it runs)
+  POST /v1/gpu-share         JSON {"share": 10-100} -> {"share"}: how much of the graphics card the work takes
 
 Narrations run on their own queue, so a book narrated overnight does not hold up
 audiobook syncs (unless RACCONTAMI_ONE_JOB=1: then they take turns, for small GPUs).
@@ -46,7 +47,7 @@ os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import aligners, awake, banner, connect_window, narrate, pipeline, single, tray, unfinished  # noqa: E402
+from . import aligners, awake, banner, connect_window, gpu_share, narrate, pipeline, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
@@ -201,7 +202,13 @@ ONE_JOB = os.environ.get("RACCONTAMI_ONE_JOB") == "1"
 pipeline.check_whisper_model(pipeline.WHISPER_MODEL)
 from whisper.tokenizer import LANGUAGES as WHISPER_LANGUAGES  # noqa: E402
 aligners.check(pipeline.ALIGN_MODELS, set(WHISPER_LANGUAGES), log)
-models = pipeline.Models(MODELS_DIR, one_job=ONE_JOB)
+# the share of the graphics card the work may take: the setting at each start, the page while it runs
+GPU_SHARE_FILE = DATA / gpu_share.FILE
+_share_setting = os.environ.get("RACCONTAMI_GPU_SHARE", "100")
+if gpu_share.parse(_share_setting) is None:
+    raise ValueError(f"RACCONTAMI_GPU_SHARE={_share_setting!r}: a share in %, from {gpu_share.LOWEST} to 100, such as 50")
+gpu_share.write(GPU_SHARE_FILE, gpu_share.parse(_share_setting))
+models = pipeline.Models(MODELS_DIR, one_job=ONE_JOB, gpu_share=lambda: gpu_share.read(GPU_SHARE_FILE))
 jobs: dict[str, JobState] = {}
 work: "queue.Queue[str]" = queue.Queue()
 narrations: "queue.Queue[str]" = queue.Queue()
@@ -436,6 +443,9 @@ async def _lifespan(_app):
             ("THIS SERVER", [
                 ("Name", NAME, "Shown in the app. RACCONTAMI_NAME changes it."),
                 ("GPU", _gpu_name() or "no CUDA GPU found", ""),
+                ("GPU share", f"{gpu_share.read(GPU_SHARE_FILE)} %",
+                 "Below 100 the work pauses between its steps, so the computer stays usable; jobs take longer. "
+                 "RACCONTAMI_GPU_SHARE sets it at each start, the page changes it while jobs run."),
                 ("Data", str(DATA), ""),
                 ("Page", tray.own_url(), "Open it in a browser: it shows the work, puts it on hold or continues it."),
                 ("Icon", "next to the clock" if icon else "none",
@@ -492,6 +502,7 @@ def health():
     return {"ok": True, "version": app.version, "name": NAME,
             "gpu": _gpu_name(),
             "freeBytes": _free_bytes(),
+            "gpuShare": gpu_share.read(GPU_SHARE_FILE),
             "latestUrl": LATEST,  # for the page's "Check for a newer version": asked only when pressed
             "queue": work.qsize(), "languages": sorted(pipeline.ALIGN_MODELS),
             "narration": {lang: v.get("label", v["engine"]) for lang, v in narrate.voices(DATA).items()},
@@ -779,6 +790,19 @@ def continue_job(job_id: str):
     if refusal:
         raise HTTPException(status_code=409, detail=refusal)
     return j.view()
+
+
+@app.post("/v1/gpu-share", dependencies=[Depends(auth)])
+def set_gpu_share(body: dict = Body(...)):
+    """{"share": 10-100}: the share of the graphics card the work may take from now on, running
+    work included (gpu_share.py). Until the server stops: then the setting again."""
+    share = gpu_share.parse(str(body.get("share", "")))
+    if share is None:
+        raise HTTPException(status_code=400, detail=f"share: a number from {gpu_share.LOWEST} to 100")
+    if share != gpu_share.read(GPU_SHARE_FILE):
+        gpu_share.write(GPU_SHARE_FILE, share)
+        log(f"graphics card share: {share} %" + (" (full speed)" if share == 100 else ", with pauses between steps"))
+    return {"share": share}
 
 
 @app.post("/v1/hold", dependencies=[Depends(auth)])

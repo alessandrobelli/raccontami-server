@@ -1,7 +1,8 @@
 """Narration worker: reads <job>/plan.json and writes one WAV per text piece
 into <job>/pieces/. Runs inside the voice's own Python environment (VoxCPM2
 and Qwen3-TTS need different libraries than the sync server), so it imports
-nothing from this package.
+nothing from this package, except gpu_share.py from this folder, which needs only the standard
+library: with RACCONTAMI_GPU_SHARE_FILE set, it pauses after each piece to keep to that share.
 
 Pieces already on disk are skipped, so a job interrupted by a restart or a
 power cut continues where it stopped. Each piece is written to a temporary
@@ -121,6 +122,12 @@ def main(job: Path) -> None:
     voice = VOICES[cfg["engine"]](cfg)
     clips = plan.get("voices") or {}
     print("ready", flush=True)
+    share_file = os.environ.get("RACCONTAMI_GPU_SHARE_FILE")
+    pacer = None
+    if share_file:
+        from gpu_share import Pacer, read  # this folder is first on the path of a script run by its path
+
+        pacer = Pacer(lambda: read(Path(share_file)))
     for p in todo:
         t = time.perf_counter()
         wav = None
@@ -141,6 +148,8 @@ def main(job: Path) -> None:
             w.writeframes(pcm16(wav))
         os.replace(tmp, out / f"{p['i']:05d}.wav")
         print(f"piece {p['i']} {len(wav) / voice.sr:.2f} {time.perf_counter() - t:.2f}", flush=True)
+        if pacer is not None:
+            pacer.step()
 
 
 if __name__ == "__main__":

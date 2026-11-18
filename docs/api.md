@@ -16,6 +16,8 @@ compare with the server's window. `RACCONTAMI_TLS=0` gives plain HTTP on the sam
 
 `GET /v1/health` → `{"ok", "version", "name", "gpu", "queue", "languages": ["en","it"], "narration": {"it": "<voice label>", ...}}`. `languages`: those the server syncs, English and Italian plus any added with `RACCONTAMI_ALIGN_MODEL_<XX>`.
 
+`POST /v1/gpu-share` with `{"share": 50}` → `{"share"}`: how much of the graphics card the work may take, in % from 10 to 100, running work included, until the server stops (then `RACCONTAMI_GPU_SHARE` again). `GET /v1/health` says the current one as `gpuShare`.
+
 ## Jobs (sync and narration)
 
 `GET /v1/jobs/{id}` →
