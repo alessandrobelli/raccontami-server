@@ -192,9 +192,11 @@ class JobState:
                     "kind": self.kind})
 
     def view(self):
+        """The job as the phone sees it. A failure is said in words (unfinished.for_phone); the raw error
+        is for the server's page and its log."""
         return {"id": self.id, "kind": self.kind, "state": self.state, "stage": self.stage,
                 "progress": round(self.progress if self.state != "done" else 1.0, 4),
-                "etaSeconds": self.eta(), "error": self.error, "partial": self.partial}
+                "etaSeconds": self.eta(), "error": unfinished.for_phone(self.error), "partial": self.partial}
 
 
 # one job at a time on the GPU: a narration voice and Whisper together need ~12 GB
@@ -844,7 +846,8 @@ def list_jobs():
             j.bytes, j.sized_at, j.sized_state = unfinished.folder_bytes(j.dir), now, j.state
         details["bytes"] = j.bytes
         status = {"state": j.state, "kind": j.kind}
-        out.append({**j.view(), "about": j.about, "details": details, "holding": j.hold,
+        # the page shows the raw error under its details, and the cause in the reader's language
+        out.append({**j.view(), "error": j.error, "about": j.about, "details": details, "holding": j.hold,
                     "errorHint": unfinished.explain(j.error) if j.state == "failed" else None,
                     "errorCause": unfinished.cause(j.error) if j.state == "failed" else None,
                     "can": {"hold": j.state == "queued" or (j.state == "running" and j.kind == "narrate" and not j.hold),
@@ -866,8 +869,8 @@ def page():
 
 @app.get("/v1/jobs/{job_id}", dependencies=[Depends(auth)])
 def job_status(job_id: str):
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="unknown job")
+    if job_id not in jobs:  # still 404, which app 0.1.5 shows as "Server error 404: <detail>"
+        raise HTTPException(status_code=404, detail=unfinished.JOB_GONE)
     return jobs[job_id].view()
 
 
@@ -916,7 +919,7 @@ def model_file(name: str):
 def job_result(job_id: str, part: int = 0):
     j = jobs.get(job_id)
     if j is None:
-        raise HTTPException(status_code=404, detail="unknown job")
+        raise HTTPException(status_code=404, detail=unfinished.JOB_GONE)
     if part:
         f = j.dir / f"partial-{part}.json"
         if not f.exists():

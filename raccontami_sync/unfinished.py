@@ -75,6 +75,34 @@ _CAUSES = (
 )
 
 
+# The same causes as told to the phone, in the job's "error": said from where the phone is (the page's
+# "below" and "continue" are the server's page), and with Retry, the app's button that sends a story again.
+# None of them may hold a word app 0.1.5 takes for an unreachable server (tests/test_unfinished.py), or it
+# would keep waiting instead of saying the job failed.
+_FOR_PHONE = {
+    "memory": "The server's graphics card ran out of memory. Close what else is using it on that computer (a game, "
+              "another AI program), then tap Retry. On a card under 12 GB, set RACCONTAMI_ONE_JOB=1 in the "
+              "server's settings.txt.",
+    "disk": "The server's disk is full. Delete finished jobs on the server's page, or free space on its drive, then tap Retry.",
+    "audio": "The server could not read the audio file. Try it in a player; if it plays, convert it to MP3 or M4A and "
+             "add the story again.",
+    "driver": "The server's graphics card or its driver did not answer. Update the NVIDIA driver, restart that "
+              "computer, then tap Retry.",
+    "network": "The server could not download a model. Check that the computer is online, then tap Retry.",
+}
+UNEXPLAINED_FOR_PHONE = "The server stopped with an error it cannot explain. The server's page shows it. Tap Retry to try again."
+# a job the server does not know: deleted on its page, or the server now runs on another data folder
+JOB_GONE = ("The server no longer has this story: it was deleted there, or the server now uses another data "
+            "folder. Tap Retry to send it again.")
+
+
+def for_phone(error: str | None) -> str | None:
+    """A failure as the phone shows it: the cause in words, never the raw error (that stays on the page)."""
+    if error is None:
+        return None
+    return _FOR_PHONE.get(cause(error), UNEXPLAINED_FOR_PHONE)
+
+
 def explain(error: str | None) -> str | None:
     """A failure in the reader's words, for the causes that have one; None for the rest.
 

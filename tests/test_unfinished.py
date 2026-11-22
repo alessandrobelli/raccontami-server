@@ -263,5 +263,44 @@ class PageFactsTest(unittest.TestCase):
     def test_no_error_has_no_explanation(self):
         self.assertIsNone(u.explain(None))
 
+
+# App 0.1.5 takes a failed job's error for an unreachable server, and keeps waiting instead of saying
+# it failed, when the text holds one of these (AppState.kt, isUnreachable, in the app's repository)
+APP_UNREACHABLE_MARKS = ("refused", "timeout", "timed out", "unreachable", "failed to connect", "unable to resolve",
+                         "connection", "network")
+
+
+class ForPhoneTest(unittest.TestCase):
+    """What the phone is told about a job that failed or that the server no longer has."""
+
+    def test_running_out_of_graphics_memory_reaches_the_phone_in_words(self):
+        self.assertIn("ran out of memory", u.for_phone("RuntimeError: CUDA out of memory. Tried to allocate 2.50 GiB"))
+
+    def test_the_raw_error_of_a_known_cause_does_not_reach_the_phone(self):
+        self.assertNotIn("RuntimeError", u.for_phone("RuntimeError: CUDA out of memory. Tried to allocate 2.50 GiB"))
+
+    def test_the_raw_error_of_an_unknown_cause_does_not_reach_the_phone(self):
+        self.assertNotIn("KeyError", u.for_phone("KeyError: 'speaker'"))
+
+    def test_an_unknown_cause_points_to_the_servers_page(self):
+        self.assertIn("server's page", u.for_phone("KeyError: 'speaker'"))
+
+    def test_no_error_stays_none_for_the_phone(self):
+        self.assertIsNone(u.for_phone(None))
+
+    def test_every_cause_has_a_text_for_the_phone(self):
+        self.assertEqual({name for name, _marks, _meaning in u._CAUSES}, set(u._FOR_PHONE))
+
+    def test_a_failed_download_is_not_taken_by_the_app_for_an_unreachable_server(self):
+        said = u.for_phone("requests.exceptions.ConnectionError: Max retries exceeded with url").lower()
+        self.assertEqual([], [m for m in APP_UNREACHABLE_MARKS if m in said])
+
+    def test_no_text_for_the_phone_is_taken_by_the_app_for_an_unreachable_server(self):
+        texts = [*u._FOR_PHONE.values(), u.UNEXPLAINED_FOR_PHONE, u.JOB_GONE]
+        self.assertEqual([], [(t, m) for t in texts for m in APP_UNREACHABLE_MARKS if m in t.lower()])
+
+    def test_a_job_the_server_no_longer_has_tells_the_phone_to_send_it_again(self):
+        self.assertIn("Retry", u.JOB_GONE)
+
 if __name__ == "__main__":
     unittest.main()
