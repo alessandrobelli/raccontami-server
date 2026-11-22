@@ -438,7 +438,7 @@ async def _lifespan(_app):
         """The start-up block; [token] None says which file holds it instead."""
         voices = narrate.voices(DATA)
         return banner.render([
-            ("CONNECT THE PHONE   in the app: Settings, then the server's settings",
+            ("CONNECT THE PHONE   in the app: Settings → Server",
              connect_window.facts(for_phone, token, token_file, code)),
             ("THIS SERVER", [
                 ("Name", NAME, "Shown in the app. RACCONTAMI_NAME changes it."),

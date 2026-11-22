@@ -220,7 +220,8 @@ if (Ask "Start the server now? Its window shows the address, the token and the c
 }
 
 Step "Done"
-if ($startedNow) { Write-Host "The server is starting in its own window. In the app: Settings, the server's settings, Search local network.`n" }
+# the arrow as a character code: this script stays ASCII (Windows PowerShell reads it as ANSI)
+if ($startedNow) { Write-Host "The server is starting in its own window. In the app: Settings $([char]0x2192) Server, Search local network.`n" }
 Write-Host @"
 Start the server:   double-click $start
                     (its window shows the address, the token and the code the app asks for)

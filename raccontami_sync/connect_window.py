@@ -35,7 +35,7 @@ def facts(url: str | None, token: str | None, token_file, code: str | None) -> l
 
 def as_text(rows: list[tuple[str, str, str]]) -> str:
     """The same as plain text, for a message box when the window cannot be shown."""
-    lines = ["In the app: Settings, then the server's settings."]
+    lines = ["In the app: Settings → Server."]
     for name, value, note in rows:
         lines += ["", f"{name}:  {value}", note]
     return "\n".join(lines)
@@ -89,7 +89,7 @@ def _window(rows, server, icon=None):
     body, small = ("Segoe UI", 11), ("Segoe UI", 9)
 
     tk.Label(root, text="Connect the phone", font=("Georgia", 18, "bold"), bg=c["page"], fg=c["text"]).pack(anchor="w")
-    tk.Label(root, text="In the app, open Settings and then the server's settings."
+    tk.Label(root, text="In the app, open Settings → Server."
                         + (f" This is {server}." if server else ""),
              font=body, bg=c["page"], fg=c["muted"]).pack(anchor="w", pady=(2, 14))
 
