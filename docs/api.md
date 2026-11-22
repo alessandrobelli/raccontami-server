@@ -39,6 +39,14 @@ Stories in a language other than English and Italian are never sent: the app syn
 ```
 `partial` (narrations only): the latest part of the book that can already be downloaded.
 
+`error` (failed jobs) is a sentence for the person with the phone: the cause in plain words when the server
+knows it (graphics memory, a full disk, unreadable audio, the driver, a model download), otherwise a pointer
+to the server's page. The raw error is only in `GET /v1/jobs` and the log. App 0.1.5 takes an error that
+contains "connection", "network", "refused", "timeout" and a few more words for an unreachable server and
+keeps waiting, so these texts avoid them (`unfinished.for_phone`, tested in `tests/test_unfinished.py`).
+
+A job the server does not know is `404` with a `detail` that says so and asks to send the story again.
+
 `state` can also be `held` (with `stage` `held`): an unfinished job that the person at the server
 chose to keep without continuing it. Nothing works on it until it is continued from the server's
 page, or the server is started again and the question about it is answered. Apps that do not know
@@ -48,7 +56,7 @@ the state can show it as waiting.
 
 `GET /` → the page (no token: it holds no secret, and asks for the token itself).
 
-`GET /v1/jobs` → every job, as above, plus `about` (what it is, in words), `holding` (a hold was
+`GET /v1/jobs` → every job, as above but with the raw `error`, plus `about` (what it is, in words), `holding` (a hold was
 asked for and the voice is stopping), `can`: `{"hold": bool, "continue": bool, "delete": bool}`, and
 `details`: `title` and `device` (when the phone sent them), `language`, `words`, `sent` and
 `lastWorked` (seconds since 1970) and, for narrations, `beginning`, `audioSecondsAbout`,

@@ -126,6 +126,29 @@ downloads the models again and the app has to be paired again.
 Never publish the port with `RACCONTAMI_TLS=0` and nothing in front: the token travels
 unencrypted with every request.
 
+### Phone models (optional)
+
+The app downloads the speech models it uses to sync on the phone from this project's GitHub release,
+one per language (English about 95 MB, Italian about 317 MB). It asks the server only when that
+download fails, and takes the server's copy only if it is the very same file. So the installers do
+not build them any more; a server that already has them keeps offering them. A copy built on another
+computer may differ from the published file (other library versions); the app then refuses it, so at
+worst this fallback does not help, and a wrong model is never used.
+
+Turn this on only for a phone that can reach this computer but not GitHub, such as one on a network
+without internet. It takes a few minutes of processor work, a few GB of memory while it runs, and
+about 400 MB of disk:
+
+- Windows, from a clone: add `-PhoneModels` to the install command. After the one-file setup, in
+  PowerShell (for another folder than the usual one, change both paths and first set
+  `$env:RACCONTAMI_HOME` to that folder):
+  ```powershell
+  & "$env:USERPROFILE\raccontami\env\Scripts\python.exe" "$env:USERPROFILE\raccontami\raccontami-server\tools\export_phone_model.py" facebook/wav2vec2-base-960h
+  ```
+  and the same line again with `jonatasgrosman/wav2vec2-large-xlsr-53-italian` at the end.
+- Linux: add `--phone-models` to the install command.
+- Docker: add `-e RACCONTAMI_PHONE_MODELS=1` to `docker run`.
+
 ## Connect this phone
 
 This is the app's button **2 · Connect this phone**. Keep the server running on the PC, and the phone
@@ -381,7 +404,7 @@ hours.
 |---|---|
 | The app can't reach the server | Open the server's address in the phone's browser, starting with `https://` (`http://` with `RACCONTAMI_TLS=0`). A reachable server shows a certificate warning, which is expected because the certificate is its own, and then its page. No answer at all: the server is not running, the address or the network is wrong, or the firewall blocks it (next line) |
 | The app says "The server refused the token" | The token in the app is not this server's (it changes when `token.txt` in the data folder is deleted, or with `RACCONTAMI_TOKEN`). Copy it again from the server's window or its **Connect the phone** window, and tap **Test and save** |
-| The app says "Server error 404: unknown job" | The server no longer has that job: it was deleted on the server's page, or the server now runs with another data folder. **Retry** in the app sends the story again |
+| The app says "Server error 404: The server no longer has this story …" (before version 0.3.0: "… unknown job") | The server no longer has that job: it was deleted on the server's page, or the server now runs with another data folder. **Retry** in the app sends the story again |
 | The page opens on the computer but the phone gets no answer (Windows) | The firewall. Run the installer again and answer yes to its question about phones on your network (or run the `New-NetFirewallRule` line it prints, as administrator). If Windows once asked whether to allow Python and the answer was Cancel, it made rules that block it: open *Windows Defender Firewall with Advanced Security → Inbound Rules* and delete the blocking rules named Python |
 | The first narration of a language "prepares the voice" for 3–4 min | VoxCPM2 is compiling; the result is cached, later starts take under a minute |
 | Narration below 1× real time | on Windows, `triton-windows` is missing in `tts\env-a` (re-run the installer); or the GPU is busy |
