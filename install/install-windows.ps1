@@ -7,10 +7,12 @@
   powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -RaccontamiHome D:\raccontami
 
   Needs: Python 3.12 (py launcher), ffmpeg on PATH, an NVIDIA driver for CUDA 12.8 (570+).
-  Disk: about 15 GB of Python environments + 20 GB of models in the home folder.
+  Disk: about 15 GB of Python environments in the home folder + 20 GB of models, in <home>\models or
+  in the folder given with -ModelsDir (for example -ModelsDir E:\raccontami-models).
 #>
 param(
     [string]$RaccontamiHome = "$env:USERPROFILE\raccontami",
+    [string]$ModelsDir,         # where the models go (about 20 GB); without it, <home>\models. Kept in settings.txt
     [switch]$SkipModels,        # do not download the models now (they download on first use)
     [switch]$PhoneModels,       # also build the phone models here: a second source, the app gets them from GitHub (README, "Phone models")
     [switch]$SkipPhoneModels,   # the usual now; still accepted so that older commands work
@@ -33,6 +35,47 @@ function Write-BatchFile($path, $text) {
     # (This script stays ASCII: Windows PowerShell reads a script without a BOM as ANSI.)
     $all = "@echo off`r`nchcp 65001 > nul`r`n" + ($text -replace "`r?`n", "`r`n") + "`r`n"
     [System.IO.File]::WriteAllText($path, $all, (New-Object System.Text.UTF8Encoding $false))
+}
+
+function Get-FullFolder($path) {
+    # "D:\my folder\" handed on as an argument would end in \" and lose its closing quote; a drive's root keeps it.
+    # Given that way by another program, it arrives with the quote inside (D:\my folder"), which is dropped here.
+    $full = [System.IO.Path]::GetFullPath("$path".Trim().Trim('"'))
+    if ($full.Length -gt 3) { $full = $full.TrimEnd('\') }
+    $full
+}
+
+function Get-ModelsSetting($file) {
+    # the models folder settings.txt names, read as the server reads it (raccontami_sync/settings.py), or nothing
+    if (-not (Test-Path -LiteralPath $file)) { return "" }
+    $found = ""
+    foreach ($line in Get-Content -LiteralPath $file -Encoding UTF8) {
+        if ($line -match '^\s*RACCONTAMI_MODELS\s*=(.*)$') {
+            $value = $Matches[1].Trim().Trim('"')
+            if ($value) { $found = $value }
+        }
+    }
+    $found
+}
+
+function Resolve-ModelsFolder($file, $chosen, $usual) {
+    # The folder the models download into must be the one the server reads, so settings.txt wins: the
+    # installer does not change a line that is already there.
+    $named = Get-ModelsSetting $file
+    if ($named) {
+        if ($chosen -and (Get-FullFolder $chosen) -ne (Get-FullFolder $named)) {
+            Write-Host "settings.txt already puts the models in $named, so they stay there. To move them, stop the server, move the folder and change RACCONTAMI_MODELS in settings.txt."
+        }
+        return $named
+    }
+    if ($chosen) { return (Get-FullFolder $chosen) }
+    $usual
+}
+
+function Add-ModelsSetting($file, $folder, $usual) {
+    # a models folder chosen at install goes into settings.txt, which both starts read (with and without a window)
+    if ((Get-FullFolder $folder) -eq (Get-FullFolder $usual) -or (Get-ModelsSetting $file)) { return }
+    Add-Content -Encoding utf8 -LiteralPath $file @("", "# Where the models are, chosen when installing. To move them: stop the server, move the folder, change this line.", "RACCONTAMI_MODELS=$folder")
 }
 
 Step "Checking the computer"
@@ -63,26 +106,91 @@ if ($driver -and $driver -lt 570) {
 }
 
 New-Item -ItemType Directory -Force $H | Out-Null
+$H = Get-FullFolder $H
 $fresh = -not (Test-Path "$H\env\Scripts\python.exe")
-$freeGB = [math]::Floor(([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot((Resolve-Path $H).Path))).AvailableFreeSpace / 1GB)
-Write-Host "Free space on the drive of ${H}: $freeGB GB"
+$settings = "$H\settings.txt"
+$usualModels = "$H\models"
+# the server's own order: a RACCONTAMI_MODELS already set on this computer wins over settings.txt
+$modelsFromEnv = $env:RACCONTAMI_MODELS
+if ($modelsFromEnv) {
+    $Models = $modelsFromEnv
+    Write-Host "RACCONTAMI_MODELS is set on this computer, so the models go to $Models, where the server looks for them."
+} else {
+    $Models = Resolve-ModelsFolder $settings $ModelsDir $usualModels
+}
+try { New-Item -ItemType Directory -Force $Models -ErrorAction Stop | Out-Null }
+catch { Fail "The models folder $Models cannot be made ($($_.Exception.Message)). Check the drive and the folder name, then run this again." }
+# a chosen folder holds every model, as the server does (raccontami_sync/paths.py, model_homes); without
+# one, a HF_HOME set on this computer keeps the Hugging Face models, nearly all of the 20 GB
+$modelsChosen = [bool]($modelsFromEnv -or (Get-FullFolder $Models) -ne $usualModels -or (Get-ModelsSetting $settings))
+Write-Host "Home folder: $H"
+Write-Host "Models:      $Models"
+if ($env:HF_HOME -and -not $modelsChosen) { Write-Host "             (the Hugging Face models go to $env:HF_HOME instead: HF_HOME is set on this computer)" }
+if ((Get-FullFolder $Models) -ne $usualModels -and (Test-Path "$usualModels\*")) {
+    Write-Host "The models already in $usualModels stay there and are not used: delete that folder to free its space."
+}
 if ($fresh) {
-    if ($freeGB -lt 35) {
-        Fail "A new install needs about 35 GB (15 GB of Python environments, 20 GB of models) and this drive has $freeGB GB free. Free some space, or choose another drive with -RaccontamiHome."
+    # GB needed per drive: the Python environments in the home folder, the models where they go
+    $need = [ordered]@{}
+    foreach ($part in @($H, 15), @($(if ($env:HF_HOME -and -not $modelsChosen) { $env:HF_HOME } else { $Models }), 20)) {
+        $root = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($part[0]))
+        $need[$root] = $need[$root] + $part[1]
+    }
+    foreach ($root in $need.Keys) {
+        $freeGB = [math]::Floor(([System.IO.DriveInfo]::new($root)).AvailableFreeSpace / 1GB)
+        Write-Host "Free space on ${root}: $freeGB GB (about $($need[$root]) GB needed)"
+        if ($freeGB -lt $need[$root]) {
+            Fail "A new install needs about $($need[$root]) GB on $root (15 GB of Python environments in the home folder, 20 GB of models in their folder) and that drive has $freeGB GB free. Free some space, or choose other folders with -RaccontamiHome and -ModelsDir."
+        }
     }
     Write-Host @"
 
-This installs everything into $H
+This installs into $H, with the models in $Models,
 and downloads about 35 GB: three Python environments (about 15 GB) and the models (about 20 GB).
 On a fast connection that is around half an hour; on a slow one it can take hours. It can be
 stopped and run again: what is already there is kept.
 "@
 }
 
-New-Item -ItemType Directory -Force "$H\server-data", "$H\models", "$H\onnx", "$H\tts" | Out-Null
+New-Item -ItemType Directory -Force "$H\server-data", "$H\onnx", "$H\tts" | Out-Null
 $env:PIP_CACHE_DIR = "$H\pip-cache"     # keeps the multi-GB downloads off C:
 $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 $env:RACCONTAMI_HOME = $H
+# the model download and the phone models do not read settings.txt: they are told the folder only when one
+# was chosen, so that without one they follow a HF_HOME set on this computer, as the server does
+if ($modelsChosen) { $env:RACCONTAMI_MODELS = $Models } else { Remove-Item Env:RACCONTAMI_MODELS -ErrorAction SilentlyContinue }
+
+# the settings file is written before anything downloads, so a run stopped halfway and started again
+# finds the models folder it chose
+$start = "$H\start-server.bat"
+if (-not (Test-Path $settings)) {
+    # settings written into a start file made by an earlier version move here, so they are not lost
+    $kept = @()
+    if (Test-Path $start) {
+        $kept = @(Get-Content $start | Where-Object { $_ -match '^\s*set\s+(RACCONTAMI_(?!HOME=)\w+=.+)$' } |
+                  ForEach-Object { $Matches[1].Trim() })
+    }
+    @"
+# Settings of the Raccontami server: one per line, NAME=value. Lines starting with # are notes.
+# The installer only adds the models folder chosen when installing; it changes nothing else here.
+# The README lists every setting.
+# The server reads it when it starts: stop the server and start it again after a change.
+
+# How the app names this server
+# RACCONTAMI_NAME=My PC
+
+# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
+# RACCONTAMI_TLS=0
+
+# GPU under 12 GB: run syncs and narrations one at a time
+# RACCONTAMI_ONE_JOB=1
+"@ | Set-Content -Encoding utf8 $settings
+    if ($kept) {
+        Add-Content -Encoding utf8 $settings (@("", "# Kept from the earlier start file") + $kept)
+        Write-Host "settings kept from the earlier start file: $($kept -join ', ')"
+    }
+}
+if (-not $modelsFromEnv) { Add-ModelsSetting $settings $Models $usualModels }
 
 function Ensure-Env($dir, $requirements, $label) {
     Step "Python environment: $label ($dir)"
@@ -127,34 +235,6 @@ if (-not $PhoneModels -or $SkipPhoneModels) {
 }
 
 Step "Settings and start script"
-$start = "$H\start-server.bat"
-$settings = "$H\settings.txt"
-if (-not (Test-Path $settings)) {
-    # settings written into a start file made by an earlier version move here, so they are not lost
-    $kept = @()
-    if (Test-Path $start) {
-        $kept = @(Get-Content $start | Where-Object { $_ -match '^\s*set\s+(RACCONTAMI_(?!HOME=)\w+=.+)$' } |
-                  ForEach-Object { $Matches[1].Trim() })
-    }
-    @"
-# Settings of the Raccontami server: one per line, NAME=value. Lines starting with # are notes.
-# The installer never changes this file. The README lists every setting.
-# The server reads it when it starts: stop the server and start it again after a change.
-
-# How the app names this server
-# RACCONTAMI_NAME=My PC
-
-# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
-# RACCONTAMI_TLS=0
-
-# GPU under 12 GB: run syncs and narrations one at a time
-# RACCONTAMI_ONE_JOB=1
-"@ | Set-Content -Encoding utf8 $settings
-    if ($kept) {
-        Add-Content -Encoding utf8 $settings (@("", "# Kept from the earlier start file") + $kept)
-        Write-Host "settings kept from the earlier start file: $($kept -join ', ')"
-    }
-}
 Write-Host $settings
 Write-BatchFile $start @"
 rem Starts the Raccontami server (port 8765). Made by install-windows.ps1, which writes it anew at

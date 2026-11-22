@@ -18,6 +18,7 @@
 #>
 param(
     [string]$RaccontamiHome,     # where everything goes; asked when not given
+    [string]$ModelsDir,          # where the models go (about 20 GB); asked on a new install when not given, else <home>\models
     [switch]$NoQuestions,        # ask nothing: the usual folder, and the installer's questions answered no
     [switch]$OnlyTools           # bring Python, ffmpeg and the code, and stop before the installer
 )
@@ -74,6 +75,22 @@ if (-not $RaccontamiHome) {
 $H = [System.IO.Path]::GetFullPath($RaccontamiHome)
 # "D:\my folder\" handed to the installer would end in \" and lose its closing quote; a drive's root keeps it
 if ($H.Length -gt 3) { $H = $H.TrimEnd('\') }
+$newInstall = -not (Test-Path (Join-Path $H "env\Scripts\python.exe"))
+# asked on a new install only: running this again is how the server is updated, and a folder typed then
+# would mean 20 GB downloaded a second time
+if (-not $ModelsDir -and -not $env:RACCONTAMI_MODELS -and $newInstall -and -not $NoQuestions -and [Environment]::UserInteractive) {
+    Write-Host "`nThe models take about 20 GB and can go on another drive."
+    if ($env:HF_HOME) { Write-Host "(HF_HOME is set on this computer: press Enter and the Hugging Face models, nearly all of them, go to $env:HF_HOME; type a folder and all the models go there.)" }
+    $answer = (Read-Host "Where should the models go? Press Enter for $H\models, or type a folder (for example E:\raccontami-models)").Trim().Trim('"')
+    if ($answer) { $ModelsDir = $answer }
+}
+if ($ModelsDir) {
+    $ModelsDir = [System.IO.Path]::GetFullPath($ModelsDir)
+    if ($ModelsDir.Length -gt 3) { $ModelsDir = $ModelsDir.TrimEnd('\') }
+    if (-not (Test-Path ([System.IO.Path]::GetPathRoot($ModelsDir)))) {
+        Fail "There is no drive $([System.IO.Path]::GetPathRoot($ModelsDir)) for the models folder $ModelsDir. Run this again and choose a folder on a drive this computer has."
+    }
+}
 $tools = Join-Path $H "tools"
 $tmp = Join-Path $tools "download"
 
@@ -86,10 +103,24 @@ $driver = 0
 if (@($gpu)[0] -match ',\s*(\d+)\.[\d.]+\s*$') { $driver = [int]$Matches[1] }
 if ($driver -and $driver -lt 570) { Fail "The NVIDIA driver is version $driver; the server needs 570 or newer. Update it from nvidia.com (or the NVIDIA app), then run this again." }
 New-Item -ItemType Directory -Force $H | Out-Null
-$freeGB = [math]::Floor(([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($H))).AvailableFreeSpace / 1GB)
-Write-Host "Home folder: $H   ($freeGB GB free on its drive)"
-if (-not (Test-Path (Join-Path $H "env\Scripts\python.exe")) -and $freeGB -lt 35) {
-    Fail "A new install needs about 35 GB and this drive has $freeGB GB free. Free some space, or run this again and choose a folder on another drive."
+$models = if ($env:RACCONTAMI_MODELS) { $env:RACCONTAMI_MODELS } elseif ($ModelsDir) { $ModelsDir } else { Join-Path $H "models" }
+Write-Host "Home folder: $H"
+Write-Host "Models:      $models"
+if ($newInstall) {
+    # GB needed per drive: 15 for the Python environments in the home folder, 20 for the models where they go
+    $need = [ordered]@{}
+    # a chosen folder holds every model; without one, a HF_HOME set on this computer keeps nearly all of them
+    $hfGoes = if ($env:HF_HOME -and -not $ModelsDir -and -not $env:RACCONTAMI_MODELS) { $env:HF_HOME } else { $models }
+    foreach ($part in @($H, 15), @($hfGoes, 20)) {
+        $root = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($part[0]))
+        $need[$root] = $need[$root] + $part[1]
+    }
+    foreach ($root in $need.Keys) {
+        $freeGB = [math]::Floor(([System.IO.DriveInfo]::new($root)).AvailableFreeSpace / 1GB)
+        if ($freeGB -lt $need[$root]) {
+            Fail "A new install needs about $($need[$root]) GB on $root and that drive has $freeGB GB free. Free some space, or run this again and choose folders on another drive."
+        }
+    }
 }
 New-Item -ItemType Directory -Force $tools, $tmp | Out-Null
 
@@ -180,6 +211,7 @@ $installer = Join-Path $code "install\install-windows.ps1"
 # "irm ... | iex" this setup runs in the reader's PowerShell, where that default applies. The permission is
 # for that one process; the computer's own setting is not changed.
 $installerArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $installer, "-RaccontamiHome", $H, "-Python", $python)
+if ($ModelsDir) { $installerArgs += "-ModelsDir", $ModelsDir }
 if ($NoQuestions) { $installerArgs += "-NoQuestions" }
 & powershell.exe @installerArgs
 # the installer says why it stopped; passed on, so that the window that started this says it did not finish

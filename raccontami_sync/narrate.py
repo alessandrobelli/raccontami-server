@@ -43,7 +43,7 @@ PAUSE_SPLIT = 0.35
 PAUSE_EMPTY = 1.0  # paragraphs with nothing to say, such as "* * *"
 ALIGNED_ENOUGH = 0.7
 
-from .paths import CACHE, MODELS, TTS, VOICES  # noqa: E402
+from .paths import CACHE, MODELS, TTS, VOICES, model_homes  # noqa: E402
 
 
 def _python(env: str) -> str:
@@ -209,7 +209,7 @@ def _run_worker(job: Path, voice: dict, on_piece, stop, note=lambda msg: None, s
         env["RACCONTAMI_GPU_SHARE_FILE"] = str(share_file)  # the voice paces itself by it (gpu_share.py)
     env.update({
         "PYTHONIOENCODING": "utf-8", "OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2",
-        "HF_HOME": env.get("HF_HOME", str(MODELS / "hf")),
+        "HF_HOME": model_homes(env, MODELS)["HF_HOME"],
         "TORCHINDUCTOR_CACHE_DIR": str(CACHE / "inductor"),
         "TRITON_CACHE_DIR": str(CACHE / "triton"),
     })

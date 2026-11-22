@@ -9,9 +9,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from raccontami_sync.paths import MODELS  # noqa: E402
+from raccontami_sync.paths import MODELS, model_homes  # noqa: E402
 
-os.environ.setdefault("HF_HOME", str(MODELS / "hf"))
+# the same folders the server uses, so what is downloaded here is found there
+os.environ.update(model_homes(os.environ, MODELS))
 
 from huggingface_hub import snapshot_download  # noqa: E402
 
