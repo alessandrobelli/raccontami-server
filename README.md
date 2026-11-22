@@ -126,6 +126,27 @@ downloads the models again and the app has to be paired again.
 Never publish the port with `RACCONTAMI_TLS=0` and nothing in front: the token travels
 unencrypted with every request.
 
+### Phone models (optional)
+
+The app downloads the speech models it uses to sync on the phone from this project's GitHub release,
+one per language (English about 95 MB, Italian about 317 MB). It asks the server only when that
+download fails, and takes the server's copy only if it is the very same file. So the installers do
+not build them any more; a server that already has them keeps offering them.
+
+Turn this on only for a phone that can reach this computer but not GitHub, such as one on a network
+without internet. It takes a few minutes of processor work, a few GB of memory while it runs, and
+about 400 MB of disk:
+
+- Windows, from a clone: add `-PhoneModels` to the install command. After the one-file setup, in
+  PowerShell (for another folder than the usual one, change both paths and first set
+  `$env:RACCONTAMI_HOME` to that folder):
+  ```powershell
+  & "$env:USERPROFILE\raccontami\env\Scripts\python.exe" "$env:USERPROFILE\raccontami\raccontami-server\tools\export_phone_model.py" facebook/wav2vec2-base-960h
+  ```
+  and the same line again with `jonatasgrosman/wav2vec2-large-xlsr-53-italian` at the end.
+- Linux: add `--phone-models` to the install command.
+- Docker: add `-e RACCONTAMI_PHONE_MODELS=1` to `docker run`.
+
 ## Connect this phone
 
 This is the app's button **2 · Connect this phone**. Keep the server running on the PC, and the phone

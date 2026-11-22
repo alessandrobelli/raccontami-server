@@ -2,7 +2,10 @@
 # Installs the Raccontami server on Linux with an NVIDIA GPU. Safe to run again:
 # whatever is already installed is kept, only what is missing is added.
 #
-#   RACCONTAMI_HOME=/srv/raccontami ./install/install-linux.sh [--skip-models] [--skip-phone-models] [--service]
+#   RACCONTAMI_HOME=/srv/raccontami ./install/install-linux.sh [--skip-models] [--phone-models] [--service]
+#
+# --phone-models also builds the phone models here: a second source, the app downloads them from GitHub
+# (README, "Phone models"). --skip-phone-models, the usual now, is still accepted.
 #
 # Needs: python3.12 with venv, ffmpeg, an NVIDIA driver for CUDA 12.8 (570+).
 # --service writes and enables a systemd service (asks for sudo).
@@ -10,9 +13,9 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 H="${RACCONTAMI_HOME:-$HOME/raccontami}"
 TORCH_INDEX=https://download.pytorch.org/whl/cu128
-SKIP_MODELS=0; SKIP_PHONE=0; SERVICE=0
+SKIP_MODELS=0; PHONE=0; SERVICE=0
 for a in "$@"; do case "$a" in
-  --skip-models) SKIP_MODELS=1;; --skip-phone-models) SKIP_PHONE=1;; --service) SERVICE=1;;
+  --skip-models) SKIP_MODELS=1;; --phone-models) PHONE=1;; --skip-phone-models) PHONE=0;; --service) SERVICE=1;;
   *) echo "unknown option $a"; exit 2;; esac; done
 step() { printf '\n== %s\n' "$1"; }
 fail() { printf '\n%s\n' "$1" >&2; exit 1; }
@@ -57,8 +60,10 @@ if [ "$SKIP_MODELS" = 0 ]; then
   step "Downloading the models (about 20 GB the first time)"
   "$H/env/bin/python" "$REPO/tools/prefetch.py"
 fi
-if [ "$SKIP_PHONE" = 0 ]; then
-  step "Phone models (for syncing on the phone without this computer)"
+if [ "$PHONE" = 0 ]; then
+  printf '\nPhone models: not built here. The app downloads them from GitHub; --phone-models builds them here too.\n'
+else
+  step "Phone models (a second source for the app, which downloads them from GitHub first)"
   for m in facebook/wav2vec2-base-960h jonatasgrosman/wav2vec2-large-xlsr-53-italian; do
     n="${m##*/}"
     if [ -f "$H/onnx/$n.int8.onnx" ]; then echo "$n: already there"; else "$H/env/bin/python" "$REPO/tools/export_phone_model.py" "$m" "$H/onnx"; fi

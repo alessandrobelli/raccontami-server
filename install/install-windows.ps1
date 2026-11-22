@@ -12,7 +12,8 @@
 param(
     [string]$RaccontamiHome = "$env:USERPROFILE\raccontami",
     [switch]$SkipModels,        # do not download the models now (they download on first use)
-    [switch]$SkipPhoneModels,   # do not build the models the app downloads for syncing on the phone
+    [switch]$PhoneModels,       # also build the phone models here: a second source, the app gets them from GitHub (README, "Phone models")
+    [switch]$SkipPhoneModels,   # the usual now; still accepted so that older commands work
     [switch]$NoQuestions,       # do not ask about the firewall and starting at login (the last lines say how)
     [string]$Python             # the python.exe (3.12) to make the environments with; without it, the py launcher's
 )
@@ -113,8 +114,10 @@ if (-not $SkipModels) {
     if ($LASTEXITCODE) { Fail "Model download failed; run this again to continue where it stopped." }
 }
 
-if (-not $SkipPhoneModels) {
-    Step "Phone models (for syncing on the phone without this computer)"
+if (-not $PhoneModels -or $SkipPhoneModels) {
+    Write-Host "`nPhone models: not built here. The app downloads them from GitHub; -PhoneModels builds them here too."
+} else {
+    Step "Phone models (a second source for the app, which downloads them from GitHub first)"
     foreach ($m in "facebook/wav2vec2-base-960h", "jonatasgrosman/wav2vec2-large-xlsr-53-italian") {
         $name = $m.Split("/")[1]
         if (Test-Path "$H\onnx\$name.int8.onnx") { Write-Host "$name`: already there"; continue }

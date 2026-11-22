@@ -2,7 +2,8 @@
 
   python tools/export_phone_model.py <hf-model-id> [<out-dir>]   (default out-dir: <home>/onnx)
 
-The app downloads these (Settings > On-phone models):
+The app downloads these from the GitHub release, and from the server only when that fails
+(Settings > Sync > Languages on this phone):
   English  facebook/wav2vec2-base-960h
   Italian  jonatasgrosman/wav2vec2-large-xlsr-53-italian
 Other languages: convert any wav2vec2-style CTC model the same way, see docs/phone-models.md.
