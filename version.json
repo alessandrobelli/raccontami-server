@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "date": "2026-11-22",
-  "notes": "The setup works on a fresh Windows PC, also from a folder with an accent in its name. The phone shows a failed job in plain words. The page can give the work only part of the graphics card, and delete all finished jobs at once. Phone models are no longer built at install."
+  "notes": "The setup asks where the models go, so their 20 GB can be on another drive. A chosen models folder now holds every model, also on a computer where HF_HOME is set."
 }
