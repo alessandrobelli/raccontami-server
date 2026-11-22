@@ -72,6 +72,8 @@ if (-not $RaccontamiHome) {
     }
 }
 $H = [System.IO.Path]::GetFullPath($RaccontamiHome)
+# "D:\my folder\" handed to the installer would end in \" and lose its closing quote; a drive's root keeps it
+if ($H.Length -gt 3) { $H = $H.TrimEnd('\') }
 $tools = Join-Path $H "tools"
 $tmp = Join-Path $tools "download"
 
@@ -174,6 +176,11 @@ if ($OnlyTools) {
 
 # ---- the installer: environments, models, start files, firewall and login
 $installer = Join-Path $code "install\install-windows.ps1"
-& $installer -RaccontamiHome $H -Python $python -NoQuestions:$NoQuestions
+# in a PowerShell of its own that may run it: Windows allows no script files by default, and pasted as
+# "irm ... | iex" this setup runs in the reader's PowerShell, where that default applies. The permission is
+# for that one process; the computer's own setting is not changed.
+$installerArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $installer, "-RaccontamiHome", $H, "-Python", $python)
+if ($NoQuestions) { $installerArgs += "-NoQuestions" }
+& powershell.exe @installerArgs
 # the installer says why it stopped; passed on, so that the window that started this says it did not finish
 if ($LASTEXITCODE) { throw $Stopped }

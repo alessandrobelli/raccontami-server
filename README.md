@@ -1,25 +1,36 @@
 # Raccontami server
 
-The GPU companion of **Raccontami**, a reading app that highlights each word of a book
-as it is spoken. It runs on a computer with an NVIDIA graphics card, at home or rented,
-and does three jobs for the app:
+The free companion program of **Raccontami**, the Android reading app that highlights each word of
+a book as it is spoken. It runs on a PC with an NVIDIA graphics card.
+
+**The app works without it.** Reading is free, and the app can line up an audiobook with its text
+on the phone itself. The server is the faster way to do that, and the only way to have a text
+read aloud when there is no audiobook:
 
 | Job | What it does | Speed on an RTX 5080 |
 |---|---|---|
 | **Sync** | lines up an audiobook you already have with its text, word by word | a few minutes per book |
-| **Narrate** | reads a text aloud with a natural voice, then syncs it | ~1 h of work per 3 h of audio |
-| **Phone models** | serves the small models the app uses to sync on the phone itself | – |
+| **Narrate** | reads a text aloud with a natural voice (English and Italian), then syncs it | ~1 h of work per 3 h of audio |
+| **Phone models** | a second source for the speech models the app uses to sync on the phone (the app downloads them from GitHub first) | – |
 
-![The server's page: what it is working on, with a button to put it on hold](docs/img/page.jpg)
-
-Status: tested on Windows 11 with an RTX 5080. The Linux installer and the Docker image follow the
-same steps but have not been run on real hardware yet; reports welcome.
-
-**Contents:** [What you need](#what-you-need) · [Install](#install) · [Connect the app](#connect-the-app) ·
+**Contents:** [Install](#install) · [What you need](#what-you-need) · [Connect this phone](#connect-this-phone) ·
 [Day to day](#day-to-day) · [Your network](#your-network) · [Voices](#voices) · [Settings](#settings) ·
 [Troubleshooting](#troubleshooting) · [How it works](#how-it-works)
 
-## What you need
+## Install
+
+**Came here from the app's button "1 · Get the server for your PC"?** These steps are for the PC,
+not the phone. Open this page on the PC: **github.com/alessandrobelli/raccontami-server**
+
+### What you need
+
+- A Windows 10 or 11 PC with an **NVIDIA graphics card** (8 GB or more) and its driver, version
+  570 or newer.
+- **35 GB** of free disk space, and an internet connection for a download of about 35 GB.
+- Nothing else: the setup brings what it needs.
+
+No NVIDIA card, or a Mac? The server does not run there. Sync on the phone instead: in the app,
+**Settings → Sync → On this phone**.
 
 | | Minimum | Recommended |
 |---|---|---|
@@ -28,35 +39,40 @@ same steps but have not been run on real hardware yet; reports welcome.
 | Disk | 35 GB | 50 GB on a fast drive, plus room for finished work (see [Disk space](#disk-space)) |
 | Software | Windows: nothing, the setup brings its own. Linux: Python 3.12, ffmpeg, git | |
 
-The Windows setup checks the graphics card, its driver and the free space before it downloads anything.
+The Windows setup checks the graphics card, its driver and the free space before it downloads
+anything, and stops with a message that says what is missing.
 
-## Install
-
-Everything goes into one home folder (default `~/raccontami`, or `%USERPROFILE%\raccontami`). The
-installers download about 35 GB and are safe to stop and run again: they only add what is missing.
+Status: tested on Windows 11 with an RTX 5080. The Linux installer and the Docker image follow the
+same steps but have not been run on real hardware yet; reports welcome.
 
 ### Windows
 
-1. Start the setup, in one of two ways:
-   - Open **PowerShell** (Start menu, type "PowerShell") and paste this line:
-     ```powershell
-     irm https://raw.githubusercontent.com/alessandrobelli/raccontami-server/main/install/setup.ps1 | iex
-     ```
-   - Or save the file [Install Raccontami server.cmd](https://github.com/alessandrobelli/raccontami-server/raw/main/Install%20Raccontami%20server.cmd)
-     (right-click the link, **Save link as…**; a plain click only shows its text) and double-click
-     it. Windows may warn about a file from the internet that it does not know. The first way has
-     no such warning.
+1. Open **PowerShell** on the PC (Start menu, type "PowerShell", press Enter), paste this one line
+   and press Enter:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/alessandrobelli/raccontami-server/main/install/setup.ps1 | iex"
+   ```
+   Or save the file [Install Raccontami server.cmd](https://github.com/alessandrobelli/raccontami-server/raw/main/Install%20Raccontami%20server.cmd)
+   (right-click the link, **Save link as…**; a plain click only shows its text) and double-click
+   it. It does the same, but Windows may first warn about a file from the internet it does not know.
 
-   The setup asks where to put everything, then brings what the computer does not have: the
-   server's code, a Python of its own and ffmpeg. All of it goes into that one folder, nothing is
-   installed in Windows itself, and no administrator is needed for it.
+   **What it installs, and where.** The setup asks for a folder; press Enter for the usual one,
+   `C:\Users\<you>\raccontami`. Everything goes into that folder: the server's code, Python 3.12
+   and ffmpeg (when the PC does not have them already), the Python packages (about 15 GB) and the
+   speech and voice models (about 20 GB). Nothing is installed in Windows itself, and no administrator is needed, except for the
+   firewall question below. On a fast connection it takes around half an hour; it can be stopped
+   and run again, and keeps what is already there.
 2. At the end the installer asks three questions. Yes to all three is the usual answer; a no can
    be changed later, and its last lines say how.
    - **May phones on your home network reach the server?** It adds a Windows firewall rule, for
      which Windows asks an administrator's permission.
    - **Start the server at login?** It then runs without a window, as an icon next to the clock.
    - **Start the server now?** Its window opens.
-3. Go on with [Connect the app](#connect-the-app).
+3. **When it works**, a window titled *Raccontami server* opens and shows, under **CONNECT THE
+   PHONE**, the three things the phone needs: the **Address** (like `https://192.168.1.20:8765`),
+   the **Token** (the server's password) and a **Code** of twenty digits. Started without a window,
+   the same is under **Connect the phone** in the menu of its icon next to the clock.
+4. Go on with [Connect this phone](#connect-this-phone).
 
 To start the server yourself, double-click `start-server.bat` in the folder you chose, or
 `Raccontami server (no window)` beside it.
@@ -110,29 +126,34 @@ downloads the models again and the app has to be paired again.
 Never publish the port with `RACCONTAMI_TLS=0` and nothing in front: the token travels
 unencrypted with every request.
 
-## Connect the app
+## Connect this phone
 
-The app asks for three things. The server shows all three when it starts: in its window, or, started
-without a window, under **Connect the phone** in the menu of the icon next to the clock, where each
-can be copied.
+This is the app's button **2 · Connect this phone**. Keep the server running on the PC, and the phone
+on the same Wi-Fi. The server shows what the app asks for: in its window, or, started without a
+window, under **Connect the phone** in the menu of the icon next to the clock, where each can be
+copied.
 
 ![The Connect the phone window: address, token and code, each with a Copy button](docs/img/connect.png)
 
-1. On the phone, on the same Wi-Fi, open **Settings**, then the server's settings.
-2. Tap **Search local network** and pick your server. (Or type the **address** the server shows,
-   like `https://192.168.1.20:8765`.)
-3. The app shows a **code** of twenty digits, like `0458 4939 0331 2265 6608`. Compare it with the
-   server's. The same: confirm. Different: something between the phone and the computer is
-   pretending to be the server; do not confirm.
-4. Enter the **token**, the server's password, and tap **Test and save**. The app answers with the
-   server's name and graphics card.
+1. In the app, open **Settings → Server**. (The button **2 · Connect this phone** leads there; from
+   the app's first screen it opens Settings, then tap **Server**.)
+2. Tap **Search local network**, then tap your server in the list. If it is not found, type the
+   **Address** the server shows, like `https://192.168.1.20:8765`.
+3. The app asks **Is this your server?** and shows a code of twenty digits, like
+   `0458 4939 0331 2265 6608`. Compare it with the server's **Code**. The same: tap **It is the
+   same**. Different: something between the phone and the computer is pretending to be the server;
+   do not continue. (With a typed address, this question comes after step 4.)
+4. Under **Token**, paste or type the server's token and tap **Test and save**. The app answers
+   *Connected to* the server's name and its graphics card.
 
 The app uses the server's name in its messages ("Narrate it on Studio PC"). Change it under
-**Name** in the app, or for every phone with `RACCONTAMI_NAME` in the [settings](#settings).
+**Name** on the same page, or for every phone with `RACCONTAMI_NAME` in the [settings](#settings).
 
 ## Day to day
 
 ### The page
+
+![The server's page: what it is working on, with a button to put it on hold](docs/img/page.jpg)
 
 Open the server's address in a browser and type the token once. On the same computer that is
 `https://localhost:8765/`; the browser warns once, because the certificate is the server's own.
@@ -240,7 +261,8 @@ compared.
   folder is new): the app refuses to connect until you pair it again. That is on purpose.
 - **After an update from a version without the encrypted link**, run the installer again. The
   server then answers on `https://`, and the app has to be paired once: search the network again,
-  or change the address in the app from `http://` to `https://`.
+  or tap **Test and save** with the old address. Either way the app finds the encrypted link and
+  asks you to compare the code.
 - **An app older than the encrypted link** cannot connect to an encrypted server. Update the app, or
   set `RACCONTAMI_TLS=0` to stay on plain HTTP for now.
 
@@ -304,8 +326,10 @@ start with a model of another kind, with a name Hugging Face does not have, or w
 Whisper does not know, and its message names the setting that is wrong. The model is
 downloaded at the first sync in that language.
 
-- **The app** offers a language for a story once it has a phone model for it (Settings → Other
-  models). Add the phone model first, then the server can sync stories in that language too.
+- **The app** offers a language for a story once it has a phone model for it (Settings → Sync →
+  **Add another language**), and syncs stories in such a language **on the phone**. The current
+  app sends only English and Italian stories to the server, so a language added here is not used
+  by it yet.
 - **Narration** needs a voice for the language as well (see [Voices](#voices)). Only English and
   Italian have one.
 - **Numbers** in the text are spelled out in words when [num2words](https://pypi.org/project/num2words/)
@@ -356,6 +380,8 @@ hours.
 | You see | Why, and what to do |
 |---|---|
 | The app can't reach the server | Open the server's address in the phone's browser, starting with `https://` (`http://` with `RACCONTAMI_TLS=0`). A reachable server shows a certificate warning, which is expected because the certificate is its own, and then its page. No answer at all: the server is not running, the address or the network is wrong, or the firewall blocks it (next line) |
+| The app says "The server refused the token" | The token in the app is not this server's (it changes when `token.txt` in the data folder is deleted, or with `RACCONTAMI_TOKEN`). Copy it again from the server's window or its **Connect the phone** window, and tap **Test and save** |
+| The app says "Server error 404: unknown job" | The server no longer has that job: it was deleted on the server's page, or the server now runs with another data folder. **Retry** in the app sends the story again |
 | The page opens on the computer but the phone gets no answer (Windows) | The firewall. Run the installer again and answer yes to its question about phones on your network (or run the `New-NetFirewallRule` line it prints, as administrator). If Windows once asked whether to allow Python and the answer was Cancel, it made rules that block it: open *Windows Defender Firewall with Advanced Security → Inbound Rules* and delete the blocking rules named Python |
 | The first narration of a language "prepares the voice" for 3–4 min | VoxCPM2 is compiling; the result is cached, later starts take under a minute |
 | Narration below 1× real time | on Windows, `triton-windows` is missing in `tts\env-a` (re-run the installer); or the GPU is busy |

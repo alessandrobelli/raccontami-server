@@ -24,6 +24,16 @@ $TorchIndex = "https://download.pytorch.org/whl/cu128"
 function Step($m) { Write-Host "`n== $m" -ForegroundColor Cyan }
 function Fail($m) { Write-Host "`n$m" -ForegroundColor Red; exit 1 }
 
+function Write-BatchFile($path, $text) {
+    # A .bat that holds a folder name with an accent (C:\Users\Nicolo with a grave o): written as ASCII the
+    # letter became ?, and cmd reads the file in whatever code page its window has. So the file is UTF-8
+    # (without the mark, which cmd would take for a command) and its window switches to UTF-8 on the
+    # second line, before any path is read. Windows line ends, as cmd expects.
+    # (This script stays ASCII: Windows PowerShell reads a script without a BOM as ANSI.)
+    $all = "@echo off`r`nchcp 65001 > nul`r`n" + ($text -replace "`r?`n", "`r`n") + "`r`n"
+    [System.IO.File]::WriteAllText($path, $all, (New-Object System.Text.UTF8Encoding $false))
+}
+
 Step "Checking the computer"
 $setupHint = "Or use the one-file setup, which brings its own: see the README."
 if ($Python) {
@@ -77,8 +87,10 @@ function Ensure-Env($dir, $requirements, $label) {
     Step "Python environment: $label ($dir)"
     $python = "$dir\Scripts\python.exe"
     if (-not (Test-Path $python)) { & $py -m venv $dir; if ($LASTEXITCODE) { Fail "Could not create $dir" } }
-    & $python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() and torch.__version__.startswith('2.11') else 1)" 2>$null
-    if ($LASTEXITCODE) {
+    # in Windows PowerShell 5.1 a program's redirected error output stops the script under "Stop": a missing
+    # torch writes a traceback there, which only means it is not installed yet
+    try { & $python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() and torch.__version__.startswith('2.11') else 1)" 2>$null; $haveTorch = -not $LASTEXITCODE } catch { $haveTorch = $false }
+    if (-not $haveTorch) {
         Write-Host "installing PyTorch with CUDA (about 3 GB; the bar below shows the download)..."
         & $python -m pip install torch==2.11.0 torchaudio==2.11.0 --index-url $TorchIndex
         if ($LASTEXITCODE) { Fail "PyTorch install failed in $dir" }
@@ -141,8 +153,7 @@ if (-not (Test-Path $settings)) {
     }
 }
 Write-Host $settings
-@"
-@echo off
+Write-BatchFile $start @"
 rem Starts the Raccontami server (port 8765). Made by install-windows.ps1, which writes it anew at
 rem every run: settings go in settings.txt beside this file, not here.
 title Raccontami server
@@ -154,7 +165,7 @@ cd /d "$Repo"
 echo.
 echo The server stopped. Press a key to close this window.
 pause > nul
-"@ | Set-Content -Encoding ascii $start
+"@
 Write-Host $start
 
 # the same server without a window: it lives next to the clock (see raccontami_sync/background.py)
