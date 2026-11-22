@@ -131,7 +131,9 @@ unencrypted with every request.
 The app downloads the speech models it uses to sync on the phone from this project's GitHub release,
 one per language (English about 95 MB, Italian about 317 MB). It asks the server only when that
 download fails, and takes the server's copy only if it is the very same file. So the installers do
-not build them any more; a server that already has them keeps offering them.
+not build them any more; a server that already has them keeps offering them. A copy built on another
+computer may differ from the published file (other library versions); the app then refuses it, so at
+worst this fallback does not help, and a wrong model is never used.
 
 Turn this on only for a phone that can reach this computer but not GitHub, such as one on a network
 without internet. It takes a few minutes of processor work, a few GB of memory while it runs, and
