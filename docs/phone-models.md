@@ -1,13 +1,14 @@
 # Speech models for on-phone sync
 
 Raccontami can sync an audiobook with its text on the phone, without a server. For
-that it needs a speech model for the book's language. English and Italian come
-ready (Settings → On-phone models → Download). For any other language, or to try a
-different model, you can add one from Hugging Face.
+that it needs a speech model for the book's language. English and Italian have a
+standard model, one download each (Settings → Sync → Languages on this phone →
+Download). For any other language, or to try a different model, you can add one
+from Hugging Face.
 
 ## Adding a model
 
-1. In the app: **Settings → Other models → Add a model**.
+1. In the app: **Settings → Sync → Add another language**.
 2. Paste the model's name from Hugging Face, like
    `jonatasgrosman/wav2vec2-large-xlsr-53-french`, or its link.
 3. The app checks it **before downloading** and shows what it found.
@@ -75,8 +76,8 @@ python tools/export_phone_model.py jonatasgrosman/wav2vec2-large-xlsr-53-french 
 
 It writes two files to `out/`: `<name>.int8.onnx` and `<name>.vocab.json`. Then:
 
-- **copy both to the phone** and use **Settings → On-phone models → Import from
-  files**; or
+- **copy both to the phone** and use **Settings → Sync → Languages on this phone →
+  Import from files**; or
 - **upload both to your own Hugging Face model** and add that in the app. The app
   recognizes the pair and uses it as it is.
 

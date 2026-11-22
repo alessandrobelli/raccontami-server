@@ -7,14 +7,24 @@ A job's id is a hash of its inputs: sending the same thing twice returns the exi
 
 Started with `python -m raccontami_sync.serve`, the server speaks HTTPS on port 8765 with a certificate it
 made itself (`tls-cert.pem` in the data folder). A client cannot check it against a public authority; it pins
-the SHA-256 of the certificate (DER) after showing the reader its first 16 hex digits, in groups of four, to
-compare with the server's window. `RACCONTAMI_TLS=0` gives plain HTTP on the same port.
+the SHA-256 of the certificate (DER) after showing the reader a code to compare with the server's window: the
+first 64 bits of that SHA-256 written as a decimal number of 20 digits, in groups of four
+(`0458 4939 0331 2265 6608`; `tls.digit_code`). `RACCONTAMI_TLS=0` gives plain HTTP on the same port.
+
+There is no version handshake: the app does not send its version, and does not act on the server's. The app
+ignores fields it does not know. An app from before the encrypted link cannot reach a server that uses it (see
+the README, "Your network").
+
+Errors are JSON `{"detail": "<text>"}`. For JSON requests the app shows `401` as "The server refused the token"
+and any other error status as "Server error <status>: <detail>". File downloads (`/audio`, `/v1/models/…`) show
+the app's own text with the status instead, and a `404` from `GET /v1/positions/…` is not an error to it.
+Stories in a language other than English and Italian are never sent: the app syncs them on the phone.
 
 ## Health
 
 `GET /v1/hello` (no token) → `{"app": "raccontami", "name", "version"}`. Used by the app's "Search local network" to recognize the server.
 
-`GET /v1/health` → `{"ok", "version", "name", "gpu", "queue", "languages": ["en","it"], "narration": {"it": "<voice label>", ...}}`. `languages`: those the server syncs, English and Italian plus any added with `RACCONTAMI_ALIGN_MODEL_<XX>`.
+`GET /v1/health` → `{"ok", "version", "name", "gpu", "queue", "languages": ["en","it"], "narration": {"it": "<voice label>", ...}, "voices": {"it": [{"id", "label", "gender"}], ...}, "freeBytes", "gpuShare", "latestUrl"}`. `languages`: those the server syncs, English and Italian plus any added with `RACCONTAMI_ALIGN_MODEL_<XX>`. `narration`: the voice of each language the server narrates. `voices`: the further voices a narrator can be given, per language (absent: one voice only). `freeBytes`, `gpuShare` and `latestUrl` are for the server's own page. The app's "Test and save" calls this and shows `name`, `gpu` and `queue`.
 
 `POST /v1/gpu-share` with `{"share": 50}` → `{"share"}`: how much of the graphics card the work may take, in % from 10 to 100, running work included, until the server stops (then `RACCONTAMI_GPU_SHARE` again). `GET /v1/health` says the current one as `gpuShare`.
 
@@ -67,7 +77,16 @@ Tokens are the book's words split at whitespace, in order; the sync file refers 
 
 ### Narrate a text
 
-`POST /v1/narrations` with `{"lang": "en|it", "tokens": [...], "paragraphs": [first token index of each paragraph]}`.
+`POST /v1/narrations` with `{"lang": "en|it", "tokens": [...], "paragraphs": [first token index of each paragraph]}`
+and optionally:
+
+- `start`: the first token to read; the words before it (title page, index) are in the text but not narrated.
+  Left out for 0, so a book sent before it existed keeps its job.
+- `silent`: token indexes that are in the text but never spoken (the symbols that mark a narrator).
+- `narrators`: `[[firstToken, "<narrator>"], ...]`, in increasing order, and `cast`: `{"<narrator>": "<voice id>"}`
+  with ids from `voices` in `/v1/health`. Both or neither: without them, one voice reads everything.
+
+A language without a voice, or a body that does not fit, is `400`.
 
 `GET /v1/jobs/{id}/audio[?part=N]` → `audio/mp4` (AAC): the finished narration, or part N while it runs.
 Parts grow (the beginning of the book up to `partial.toToken`); their timings match the final file.
@@ -97,4 +116,6 @@ The position is a word of the text (its token number), not a time in the audio.
 ## Phone models
 
 `GET /v1/models` → file names; `GET /v1/models/{name}` → the file
-(`<model>.int8.onnx`, `<model>.vocab.json`, made by `tools/export_phone_model.py`).
+(`<model>.int8.onnx`, `<model>.vocab.json`, made by `tools/export_phone_model.py`). The app downloads
+these from the `models-v1` GitHub release first and asks the server only when that fails; it checks the
+file's SHA-256 against the published one either way.
