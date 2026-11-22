@@ -21,3 +21,13 @@ TTS = Path(os.environ.get("RACCONTAMI_TTS", HOME / "tts"))
 # compiled voice kernels: the first start of a voice takes minutes, later ones seconds
 CACHE = Path(os.environ.get("RACCONTAMI_CACHE", TTS / "cache"))
 VOICES = REPO / "voices"
+
+
+def model_homes(env, models: Path) -> dict[str, str]:
+    """HF_HOME and TORCH_HOME, where the libraries download their models. A models folder that was
+    chosen (RACCONTAMI_MODELS, where the server is started or in settings.txt) holds them whatever the
+    computer sets. Without one, a HF_HOME or TORCH_HOME already set on the computer is kept: its
+    models may be there already. Else they go in the models folder."""
+    chosen = bool(env.get("RACCONTAMI_MODELS"))
+    return {name: str(models / sub) if chosen or not env.get(name) else env[name]
+            for name, sub in (("HF_HOME", "hf"), ("TORCH_HOME", "torch"))}

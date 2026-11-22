@@ -41,9 +41,8 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from .paths import DATA, MODELS as MODELS_DIR, ONNX  # noqa: E402
-os.environ.setdefault("HF_HOME", str(MODELS_DIR / "hf"))
-os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
+from .paths import DATA, MODELS as MODELS_DIR, ONNX, model_homes  # noqa: E402
+os.environ.update(model_homes(os.environ, MODELS_DIR))
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 

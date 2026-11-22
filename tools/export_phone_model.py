@@ -20,9 +20,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from raccontami_sync.paths import MODELS, ONNX  # noqa: E402
+from raccontami_sync.paths import MODELS, ONNX, model_homes  # noqa: E402
 
-os.environ.setdefault("HF_HOME", str(MODELS / "hf"))
+os.environ.update(model_homes(os.environ, MODELS))
 
 import torch  # noqa: E402
 from onnxruntime.quantization import QuantType, quantize_dynamic  # noqa: E402
