@@ -4,6 +4,9 @@
 #
 #   RACCONTAMI_HOME=/srv/raccontami ./install/install-linux.sh [--skip-models] [--phone-models] [--service]
 #
+# The models (about 20 GB) go to $RACCONTAMI_HOME/models, or to RACCONTAMI_MODELS=/big/disk/models given
+# the same way; a folder chosen so is kept in settings.txt, and a later run uses the one written there.
+#
 # --phone-models also builds the phone models here: a second source, the app downloads them from GitHub
 # (README, "Phone models"). --skip-phone-models, the usual now, is still accepted.
 #
@@ -30,14 +33,84 @@ case "$driver" in ''|*[!0-9]*) driver=0;; esac
 [ "$driver" -eq 0 ] || [ "$driver" -ge 570 ] || fail "The NVIDIA driver is version $driver; the server needs 570 or newer."
 
 mkdir -p "$H"
-free_gb="$(df -Pk "$H" | awk 'NR==2 {print int($4 / 1048576)}')"
-echo "Free space on the drive of $H: ${free_gb} GB"
-if [ ! -x "$H/env/bin/python" ]; then
-  [ "$free_gb" -ge 35 ] || fail "A new install needs about 35 GB (15 GB of Python environments, 20 GB of models) and this drive has ${free_gb} GB free. Free some space, or set RACCONTAMI_HOME to another drive."
-  printf '\nThis installs everything into %s and downloads about 35 GB.\nIt can be stopped and run again: what is already there is kept.\n' "$H"
+H="$(realpath -m "$H")"
+SETTINGS="$H/settings.txt"
+models_setting() {  # the models folder settings.txt names, read as the server reads it, or nothing
+  [ -f "$1" ] || return 0
+  sed -n -E 's/^[[:space:]]*RACCONTAMI_MODELS[[:space:]]*=(.*)$/\1/p' "$1" |
+    sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/^"+//; s/"+$//' | grep -v '^$' | tail -n 1 || true
+}
+# the folder the models download into must be the one the server reads, so settings.txt wins: the
+# installer does not change a line that is already there
+named="$(models_setting "$SETTINGS")"
+if [ -n "$named" ]; then
+  M="$named"
+  if [ -n "${RACCONTAMI_MODELS:-}" ] && [ "$(realpath -m "$RACCONTAMI_MODELS")" != "$(realpath -m "$named")" ]; then
+    echo "settings.txt already puts the models in $named, so they stay there. To move them, stop the server, move the folder and change RACCONTAMI_MODELS in settings.txt."
+  fi
+elif [ -n "${RACCONTAMI_MODELS:-}" ]; then
+  M="$(realpath -m "$RACCONTAMI_MODELS")"
+else
+  M="$H/models"
 fi
-mkdir -p "$H"/{server-data,models,onnx,tts}
+mkdir -p "$M"
+echo "Home folder: $H"
+echo "Models:      $M"
+# a chosen folder holds every model, as the server does (raccontami_sync/paths.py, model_homes); without
+# one, a HF_HOME set here keeps the Hugging Face models, nearly all of the 20 GB
+chosen=0
+{ [ -n "$named" ] || [ "$(realpath -m "$M")" != "$H/models" ]; } && chosen=1
+[ -z "${HF_HOME:-}" ] || [ "$chosen" = 1 ] || echo "             (the Hugging Face models go to $HF_HOME instead: HF_HOME is set here)"
+if [ "$(realpath -m "$M")" != "$H/models" ] && [ -n "$(ls -A "$H/models" 2>/dev/null)" ]; then
+  echo "The models already in $H/models stay there and are not used: delete that folder to free its space."
+fi
+if [ ! -x "$H/env/bin/python" ]; then
+  existing() { p="$1"; while [ ! -e "$p" ]; do p="$(dirname "$p")"; done; echo "$p"; }
+  free_gb() { df -Pk "$1" | awk 'NR==2 {print int($4 / 1048576)}'; }
+  device() { df -P "$1" | awk 'NR==2 {print $1}'; }
+  if [ -n "${HF_HOME:-}" ] && [ "$chosen" = 0 ]; then hf="$(existing "$HF_HOME")"; else hf="$M"; fi
+  if [ "$(device "$H")" = "$(device "$hf")" ]; then
+    [ "$(free_gb "$H")" -ge 35 ] || fail "A new install needs about 35 GB (15 GB of Python environments, 20 GB of models) on the drive of $H and it has $(free_gb "$H") GB free. Free some space, or choose other folders with RACCONTAMI_HOME and RACCONTAMI_MODELS."
+  else
+    [ "$(free_gb "$H")" -ge 15 ] || fail "The Python environments need about 15 GB on the drive of $H and it has $(free_gb "$H") GB free. Free some space, or set RACCONTAMI_HOME to another drive."
+    [ "$(free_gb "$hf")" -ge 20 ] || fail "The models need about 20 GB on the drive of $hf and it has $(free_gb "$hf") GB free. Free some space, or set RACCONTAMI_MODELS to another drive."
+  fi
+  printf '\nThis installs into %s, with the models in %s, and downloads about 35 GB.\nIt can be stopped and run again: what is already there is kept.\n' "$H" "$M"
+fi
+mkdir -p "$H"/{server-data,onnx,tts}
 export PIP_DISABLE_PIP_VERSION_CHECK=1 RACCONTAMI_HOME="$H"
+# the model download and the phone models do not read settings.txt: they are told the folder only when one
+# was chosen, so that without one they follow a HF_HOME set here, as the server does
+if [ "$chosen" = 1 ]; then export RACCONTAMI_MODELS="$M"; else unset RACCONTAMI_MODELS; fi
+
+# the settings file is written before anything downloads, so a run stopped halfway and started again
+# finds the models folder it chose
+if [ ! -f "$SETTINGS" ]; then
+  cat > "$SETTINGS" <<'EOS'
+# Settings of the Raccontami server: one per line, NAME=value. Lines starting with # are notes.
+# The installer only adds the models folder chosen when installing; it changes nothing else here.
+# The README lists every setting.
+# The server reads it when it starts: restart the server after a change.
+
+# How the app names this server
+# RACCONTAMI_NAME=My server
+
+# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
+# RACCONTAMI_TLS=0
+
+# GPU under 12 GB: run syncs and narrations one at a time
+# RACCONTAMI_ONE_JOB=1
+EOS
+  # settings written into a start file made by an earlier version move here, so they are not lost
+  if [ -f "$H/start-server.sh" ] && grep -Eq '^export RACCONTAMI_(NAME|TLS|ONE_JOB)=' "$H/start-server.sh"; then
+    { echo; echo "# Kept from the earlier start file"
+      grep -E '^export RACCONTAMI_(NAME|TLS|ONE_JOB)=' "$H/start-server.sh" | sed -e 's/^export //' -e 's/"//g'; } >> "$SETTINGS"
+    echo "settings kept from the earlier start file"
+  fi
+fi
+if [ "$(realpath -m "$M")" != "$H/models" ] && [ -z "$(models_setting "$SETTINGS")" ]; then
+  printf '\n# Where the models are, chosen when installing. To move them: stop the server, move the folder, change this line.\nRACCONTAMI_MODELS=%s\n' "$M" >> "$SETTINGS"
+fi
 
 ensure_env() {  # dir requirements label
   step "Python environment: $3 ($1)"
@@ -71,29 +144,7 @@ else
 fi
 
 step "Settings and start script"
-if [ ! -f "$H/settings.txt" ]; then
-  cat > "$H/settings.txt" <<'EOS'
-# Settings of the Raccontami server: one per line, NAME=value. Lines starting with # are notes.
-# The installer never changes this file. The README lists every setting.
-# The server reads it when it starts: restart the server after a change.
-
-# How the app names this server
-# RACCONTAMI_NAME=My server
-
-# Plain HTTP instead of the encrypted link (behind a proxy, or for an older app)
-# RACCONTAMI_TLS=0
-
-# GPU under 12 GB: run syncs and narrations one at a time
-# RACCONTAMI_ONE_JOB=1
-EOS
-  # settings written into a start file made by an earlier version move here, so they are not lost
-  if [ -f "$H/start-server.sh" ] && grep -Eq '^export RACCONTAMI_(NAME|TLS|ONE_JOB)=' "$H/start-server.sh"; then
-    { echo; echo "# Kept from the earlier start file"
-      grep -E '^export RACCONTAMI_(NAME|TLS|ONE_JOB)=' "$H/start-server.sh" | sed -e 's/^export //' -e 's/"//g'; } >> "$H/settings.txt"
-    echo "settings kept from the earlier start file"
-  fi
-fi
-echo "$H/settings.txt"
+echo "$SETTINGS"
 cat > "$H/start-server.sh" <<EOS
 #!/usr/bin/env bash
 # Starts the Raccontami server (port 8765). Made by install-linux.sh, which writes it anew at every

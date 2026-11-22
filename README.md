@@ -26,7 +26,8 @@ not the phone. Open this page on the PC: **github.com/alessandrobelli/raccontami
 
 - A Windows 10 or 11 PC with an **NVIDIA graphics card** (8 GB or more) and its driver, version
   570 or newer.
-- **35 GB** of free disk space, and an internet connection for a download of about 35 GB.
+- **35 GB** of free disk space (the 20 GB of models can go on another drive), and an internet
+  connection for a download of about 35 GB.
 - Nothing else: the setup brings what it needs.
 
 No NVIDIA card, or a Mac? The server does not run there. Sync on the phone instead: in the app,
@@ -59,7 +60,9 @@ same steps but have not been run on real hardware yet; reports welcome.
    **What it installs, and where.** The setup asks for a folder; press Enter for the usual one,
    `C:\Users\<you>\raccontami`. Everything goes into that folder: the server's code, Python 3.12
    and ffmpeg (when the PC does not have them already), the Python packages (about 15 GB) and the
-   speech and voice models (about 20 GB). Nothing is installed in Windows itself, and no administrator is needed, except for the
+   speech and voice models (about 20 GB). It then asks where the models go: press Enter to keep
+   them in that folder, or type one on another drive (for example `E:\raccontami-models`). The
+   free space is checked on each drive. Nothing is installed in Windows itself, and no administrator is needed, except for the
    firewall question below. On a fast connection it takes around half an hour; it can be stopped
    and run again, and keeps what is already there.
 2. At the end the installer asks three questions. Yes to all three is the usual answer; a no can
@@ -85,12 +88,28 @@ cd raccontami-server
 powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -RaccontamiHome D:\raccontami
 ```
 
+Add `-ModelsDir E:\raccontami-models` to put the models on another drive (the setup takes the same
+option).
+
+**Where the models are.** A models folder chosen when installing is written in `settings.txt` as
+`RACCONTAMI_MODELS`, and the server and later runs of the setup use it from then on; running the
+setup again does not ask again. To move the models later: stop the server, move the folder and
+add or change that line. A `RACCONTAMI_MODELS` set on the computer itself wins over the file, for
+the setup as for the server. A chosen folder holds every model, even when `HF_HOME` is set on the
+computer (some machine-learning tools set it); with no folder chosen, a set `HF_HOME` keeps the
+Hugging Face models, nearly all of the 20 GB, and the setup says so. A server that had both set
+before version 0.3.1 kept those models in `HF_HOME`: to avoid downloading them again, move the
+`hub` folder from there into `<models folder>\hf`.
+
 ### Linux
 
 ```bash
 git clone https://github.com/alessandrobelli/raccontami-server && cd raccontami-server
 RACCONTAMI_HOME=/srv/raccontami ./install/install-linux.sh --service
 ```
+
+Add `RACCONTAMI_MODELS=/big/disk/raccontami-models` in front to put the models elsewhere; it is
+kept in `settings.txt` the same way.
 
 `--service` installs a systemd service that starts at boot and restarts after a crash. Without it,
 start the server with `/srv/raccontami/start-server.sh`.
@@ -264,7 +283,8 @@ Linux).
 
 ### Removing it
 
-Stop the server and delete the home folder (and the `raccontami-server` clone, if you made one).
+Stop the server and delete the home folder (and the `raccontami-server` clone, if you made one),
+and the models folder if you chose one elsewhere (the `RACCONTAMI_MODELS` line in `settings.txt`).
 The Python and the ffmpeg that the setup brought are inside the home folder and go with it. On Windows, also
 delete the shortcut in `shell:startup` (Win+R) if you had it start at login, and the firewall rule
 "Raccontami 8765" in *Windows Defender Firewall with Advanced Security → Inbound Rules*.
@@ -366,7 +386,7 @@ downloaded at the first sync in that language.
 
 Settings go in `settings.txt` in the home folder, one per line, as `NAME=value`
 (`RACCONTAMI_ONE_JOB=1`). The installer makes the file with the common ones ready to switch on, and
-never changes it afterwards; the start files, which it writes anew at every run, are not the place
+afterwards only adds the models folder chosen when installing, when the file has none; the start files, which it writes anew at every run, are not the place
 for settings. The server reads the file when it starts, with or without a window. A setting given
 as an environment variable (a service file, `docker run -e`) wins over the file.
 
@@ -386,7 +406,7 @@ as an environment variable (a service file, `docker run -e`) wins over the file.
 | `RACCONTAMI_FIRST_PART_S` | 600 | maximum length of a narration's first part, in seconds |
 | `RACCONTAMI_HOME` | `~/raccontami` | home folder for everything below (set where the server is started, not in the file) |
 | `RACCONTAMI_DATA` | `<home>/server-data` | jobs, token, log, voices.json |
-| `RACCONTAMI_MODELS` | `<home>/models` | downloaded models |
+| `RACCONTAMI_MODELS` | `<home>/models` | downloaded models (about 20 GB); the installer writes it when another folder is chosen. When set, it also holds the Hugging Face and PyTorch models; when not, a set `HF_HOME` or `TORCH_HOME` keeps them |
 | `RACCONTAMI_ONNX` | `<home>/onnx` | phone models |
 | `RACCONTAMI_TTS` | `<home>/tts` | voice environments `env-a` (VoxCPM2), `env-c` (Qwen3-TTS) |
 | `RACCONTAMI_CACHE` | `<tts>/cache` | compiled voice kernels |
