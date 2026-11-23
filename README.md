@@ -50,7 +50,8 @@ same steps but have not been run on real hardware yet; reports welcome.
 
 1. **Download the installer: [Raccontami-Server-Setup.exe](https://github.com/alessandrobelli/raccontami-server/releases/download/installer/Raccontami-Server-Setup.exe)**.
 2. **Open it** from your downloads. Windows may show *Windows protected your PC*, because the
-   installer is not signed yet: click **More info**, then **Run anyway**.
+   installer is not signed yet: click **More info**, then **Run anyway**. See the
+   [code signing policy](#code-signing-policy).
 3. **Follow its pages.** Next on each one gives the usual answers.
    - **Folder:** where the server goes, usually `C:\Users\<you>\raccontami`. Its code, its own
      Python and ffmpeg, and its Python packages (about 15 GB) go there. Nothing is installed in
@@ -317,6 +318,26 @@ compared.
 - **An app older than the encrypted link** cannot connect to an encrypted server. Update the app, or
   set `RACCONTAMI_TLS=0` to stay on plain HTTP for now.
 
+## Privacy
+
+The server works on your computer. Your books, audiobooks, narrations and reading positions stay on
+it and on the phones you pair with it; nothing is sent to the author or to any analytics service,
+and there are no accounts.
+
+The server and its installer go on the internet only for these:
+
+- **Installing and updating:** the Python packages (from [PyPI](https://pypi.org) and
+  [download.pytorch.org](https://download.pytorch.org)), ffmpeg (from GitHub) and the models (from
+  [Hugging Face](https://huggingface.co), and Whisper from OpenAI's download server).
+- **Loading and adding models:** the Hugging Face library may ask Hugging Face whether a model it
+  has changed, and the server page's **Add** downloads a language's model. Usage reports to Hugging
+  Face are turned off.
+- **Check for a newer version:** the server's page reads `version.json` from GitHub, only when you
+  press that button.
+
+Each of these sites keeps its own logs (your IP address, the file asked for) under its own privacy
+policy.
+
 ## Voices
 
 | Language | Voice | Licence |
@@ -509,3 +530,19 @@ each other. The API the app uses is described in [docs/api.md](docs/api.md).
 Apache 2.0, see [LICENSE](LICENSE). The models are downloaded from their authors under their own
 licences, all free for commercial use: Whisper (MIT), wav2vec2 aligners (Apache 2.0; the Turkish
 one, by Muhammet Poyraz, CC BY 4.0), VoxCPM2 (Apache 2.0), Qwen3-TTS (Apache 2.0).
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). *(Not signed yet: an application to SignPath Foundation
+is planned, and until it is granted the installer is not signed.)*
+
+The Windows installer is built from this repository's source by GitHub Actions
+([.github/workflows/installer.yml](.github/workflows/installer.yml)); only that build is signed, and
+each release is signed only after a person approves it.
+
+- Committers and reviewers: [Alessandro Belli](https://github.com/alessandrobelli)
+- Approvers: [Alessandro Belli](https://github.com/alessandrobelli)
+
+Privacy: see [Privacy](#privacy). This program does not send any information to other networked
+systems unless the user asks it to, or as described there.

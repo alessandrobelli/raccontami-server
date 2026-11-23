@@ -4,6 +4,11 @@ name: Windows installer
 # scans it with Microsoft Defender's on-demand scanner, and keeps it as a download of this run.
 # It does not publish it: the release file is replaced by hand, after a test install on a clean PC.
 # A file scan only finds known signatures; it would not catch a behaviour detection (see docs/installer-test.md).
+#
+# Signing (README, "Code signing policy"): a run started by hand on main ("Run workflow") also sends the
+# installer to SignPath, waits up to an hour for a person to approve it there, checks the signature and keeps
+# the signed installer as a second download. It is skipped until the SIGNPATH_API_TOKEN secret and the
+# SIGNPATH_ORGANIZATION_ID variable are set, and on every other run (pushes, pull requests).
 on:
   workflow_dispatch:
   push:
@@ -13,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read  # SignPath's step downloads the unsigned installer from this run
 
 env:
   INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe
@@ -22,7 +28,9 @@ jobs:
   build:
     name: Build the installer
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 80  # 20 to build, and up to an hour waiting for the signing to be approved
+    env:
+      SIGN: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,10 +59,54 @@ jobs:
           if ($LASTEXITCODE) { Write-Host "::warning::The Defender scan could not run (exit $LASTEXITCODE)" }
           "SHA-256: $((Get-FileHash $exe).Hash)" | Tee-Object -FilePath installer\output\SHA256.txt
 
-      - uses: actions/upload-artifact@v4
+      # the installer alone in its artifact: SignPath signs that one (its id), and the checksum is a second one
+      - name: Keep the installer
+        id: unsigned
+        uses: actions/upload-artifact@v4
         with:
           name: Raccontami-Server-Setup
+          path: installer/output/Raccontami-Server-Setup.exe
+          if-no-files-found: error
+
+      - name: Keep its checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHA256
+          path: installer/output/SHA256.txt
+          if-no-files-found: error
+
+      # ---- signing, on a run started by hand on main only (see the top of this file)
+
+      - name: Sign with SignPath (waits for the approval)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'raccontami-server' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG || 'installer' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: installer/signed
+
+      - name: Check the signature
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path installer\signed\Raccontami-Server-Setup.exe).Path
+          $sig = Get-AuthenticodeSignature $exe
+          if ($sig.Status -ne 'Valid') { throw "The signed installer's signature is $($sig.Status)" }
+          if ($sig.SignerCertificate.Subject -notmatch 'SignPath Foundation') { throw "Signed by $($sig.SignerCertificate.Subject), not SignPath Foundation" }
+          "Signed by: $($sig.SignerCertificate.Subject)"
+          "SHA-256: $((Get-FileHash $exe).Hash)" | Tee-Object -FilePath installer\signed\SHA256.txt
+
+      - if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raccontami-Server-Setup-signed
           path: |
-            installer/output/Raccontami-Server-Setup.exe
-            installer/output/SHA256.txt
+            installer/signed/Raccontami-Server-Setup.exe
+            installer/signed/SHA256.txt
           if-no-files-found: error
