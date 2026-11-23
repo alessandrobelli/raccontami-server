@@ -9,11 +9,13 @@ from raccontami_sync import aligners
 
 LETTERS = {"<pad>": 0, "<s>": 1, "</s>": 2, "<unk>": 3, "|": 4, **{c: 5 + i for i, c in enumerate("abcdefghij'")}}
 CTC = {"architectures": ["Wav2Vec2ForCTC"]}
+# a server without RACCONTAMI_LANGUAGES: English and Italian, as before languages could be chosen
+EN_IT = {k: aligners.DEFAULTS[k] for k in ("en", "it")}
 
 
 class AlignModelsTest(unittest.TestCase):
     def test_without_settings_english_and_italian_are_there(self):
-        self.assertEqual(aligners.DEFAULTS, aligners.align_models({}))
+        self.assertEqual(EN_IT, aligners.align_models({}))
 
     def test_a_setting_adds_a_language(self):
         found = aligners.align_models({"RACCONTAMI_ALIGN_MODEL_FR": "someone/french"})
@@ -23,15 +25,19 @@ class AlignModelsTest(unittest.TestCase):
         found = aligners.align_models({"RACCONTAMI_ALIGN_MODEL_EN": "someone/english"})
         self.assertEqual("someone/english", found["en"])
 
+    def test_the_chosen_languages_bring_their_models(self):
+        found = aligners.align_models({"RACCONTAMI_LANGUAGES": "es,tr"})
+        self.assertEqual({"es", "tr"}, set(found))
+
     def test_spaces_around_the_value_are_dropped(self):
         found = aligners.align_models({"RACCONTAMI_ALIGN_MODEL_DE": "  someone/german "})
         self.assertEqual("someone/german", found["de"])
 
     def test_an_empty_value_changes_nothing(self):
-        self.assertEqual(aligners.DEFAULTS, aligners.align_models({"RACCONTAMI_ALIGN_MODEL_EN": " "}))
+        self.assertEqual(EN_IT, aligners.align_models({"RACCONTAMI_ALIGN_MODEL_EN": " "}))
 
     def test_other_settings_are_not_taken(self):
-        self.assertEqual(aligners.DEFAULTS, aligners.align_models({"RACCONTAMI_WHISPER_MODEL": "turbo"}))
+        self.assertEqual(EN_IT, aligners.align_models({"RACCONTAMI_WHISPER_MODEL": "turbo"}))
 
 
 class RefusalTest(unittest.TestCase):

@@ -121,6 +121,14 @@
       </div>
     </div>
 
+    <h2 data-t="languagesHead">Languages</h2>
+    <div class="card" id="langCard">
+      <p class="muted small" data-t="langNote">The languages this server syncs and reads aloud.</p>
+      <p id="langStatus" role="status" style="margin-top:8px" hidden></p>
+      <div id="langInstalled"></div>
+      <details class="more" id="langMore"><summary data-t="langMore">Add a language</summary><div id="langOthers"></div></details>
+    </div>
+
     <h2 data-t="thisServer">This server</h2>
     <div class="card">
       <dl class="facts" id="facts"></dl>
@@ -200,6 +208,16 @@ const TEXTS = {
     cause_audio: "The audio file could not be read. Try it in a player; if it plays, convert it to MP3 or M4A and send it again.",
     cause_driver: "The graphics card or its driver did not answer. Update the NVIDIA driver, restart the computer, and continue.",
     cause_network: "A model could not be downloaded. Check the internet connection of this computer and continue.",
+    languagesHead: "Languages",
+    langNote: "The languages this server syncs and reads aloud. Removing one deletes its files; adding one downloads what it needs.",
+    langRemove: "Remove", langAdd: "Add", langMore: "Add a language", langNeedsInstaller: "needs the installer: open it again and tick this language",
+    langNew: "new", langMadeHere: "narrator made on this computer", langNoVoice: "no voice yet", langOnly: "the server's only language",
+    confirmRemoveLang: "Remove {0}?\n\nIts word-timing model and its narrator are deleted ({1}). Stories already on the phone stay there. It can be added again later.",
+    confirmRemoveLangShared: "Remove {0}?\n\nThe server stops offering it. Its model stays in the shared Hugging Face folder, which other programs may use; its narrator is deleted ({1}).",
+    confirmRemoveVoice: "No other language uses the voice {0} any more. Delete it too ({1})? Only the installer can add it again.",
+    askNarrator: "{0} gets a narrator made on this computer: a few minutes on the graphics card. Describe how it should sound:",
+    addingModel: "Adding {0}: downloading its word-timing model…", addingNarrator: "Adding {0}: making its narrator, a few minutes on the graphics card…",
+    added: "{0} is added.", removedLang: "{0} is removed; {1} freed.",
   },
   it: {
     name: "Italiano", titleRest: " server",
@@ -252,6 +270,16 @@ const TEXTS = {
     cause_audio: "Il file audio non si è potuto leggere. Provalo in un lettore; se si sente, convertilo in MP3 o M4A e mandalo di nuovo.",
     cause_driver: "La scheda grafica o il suo driver non hanno risposto. Aggiorna il driver NVIDIA, riavvia il computer e riprendi.",
     cause_network: "Non è stato possibile scaricare un modello. Controlla la connessione a internet di questo computer e riprendi.",
+    languagesHead: "Lingue",
+    langNote: "Le lingue che questo server sincronizza e legge ad alta voce. Rimuoverne una cancella i suoi file; aggiungerne una scarica quello che le serve.",
+    langRemove: "Rimuovi", langAdd: "Aggiungi", langMore: "Aggiungi una lingua", langNeedsInstaller: "serve il programma di installazione: aprilo di nuovo e spunta questa lingua",
+    langNew: "nuova", langMadeHere: "narratore creato su questo computer", langNoVoice: "ancora nessuna voce", langOnly: "l'unica lingua del server",
+    confirmRemoveLang: "Rimuovere {0}?\n\nIl modello che temporizza le parole e il narratore vengono cancellati ({1}). Le storie già sul telefono restano lì. Si può aggiungere di nuovo in seguito.",
+    confirmRemoveLangShared: "Rimuovere {0}?\n\nIl server smette di offrirla. Il suo modello resta nella cartella condivisa di Hugging Face, che altri programmi possono usare; il narratore viene cancellato ({1}).",
+    confirmRemoveVoice: "Nessun'altra lingua usa più la voce {0}. Cancellarla anche ({1})? Solo il programma di installazione può aggiungerla di nuovo.",
+    askNarrator: "{0} riceve un narratore creato su questo computer: qualche minuto sulla scheda grafica. Descrivi come deve suonare:",
+    addingModel: "Aggiunta di {0}: scarico il modello che temporizza le parole…", addingNarrator: "Aggiunta di {0}: creo il narratore, qualche minuto sulla scheda grafica…",
+    added: "{0} è stata aggiunta.", removedLang: "{0} è stata rimossa; liberati {1}.",
   },
   tr: {
     name: "Türkçe", titleRest: " sunucusu",
@@ -304,6 +332,16 @@ const TEXTS = {
     cause_audio: "Ses dosyası okunamadı. Bir oynatıcıda dene; çalıyorsa MP3 ya da M4A'ya çevirip yeniden gönder.",
     cause_driver: "Ekran kartı ya da sürücüsü yanıt vermedi. NVIDIA sürücüsünü güncelle, bilgisayarı yeniden başlat ve sürdür.",
     cause_network: "Bir model indirilemedi. Bu bilgisayarın internet bağlantısını denetle ve sürdür.",
+    languagesHead: "Diller",
+    langNote: "Bu sunucunun eşitlediği ve sesli okuduğu diller. Bir dili kaldırmak dosyalarını siler; eklemek gerekenleri indirir.",
+    langRemove: "Kaldır", langAdd: "Ekle", langMore: "Dil ekle", langNeedsInstaller: "kurulum programı gerekir: onu yeniden aç ve bu dili işaretle",
+    langNew: "yeni", langMadeHere: "anlatıcı bu bilgisayarda yapıldı", langNoVoice: "henüz ses yok", langOnly: "sunucunun tek dili",
+    confirmRemoveLang: "{0} kaldırılsın mı?\n\nSözcüklerin zamanını ölçen modeli ve anlatıcısı silinir ({1}). Telefondaki hikâyeler orada kalır. Daha sonra yeniden eklenebilir.",
+    confirmRemoveLangShared: "{0} kaldırılsın mı?\n\nSunucu bu dili artık sunmaz. Modeli, başka programların da kullanabileceği paylaşılan Hugging Face klasöründe kalır; anlatıcısı silinir ({1}).",
+    confirmRemoveVoice: "{0} sesini artık başka hiçbir dil kullanmıyor. O da silinsin mi ({1})? Onu yalnızca kurulum programı yeniden ekleyebilir.",
+    askNarrator: "{0} için bu bilgisayarda bir anlatıcı yapılacak: ekran kartında birkaç dakika sürer. Sesin nasıl olması gerektiğini anlat:",
+    addingModel: "{0} ekleniyor: sözcüklerin zamanını ölçen modeli indiriliyor…", addingNarrator: "{0} ekleniyor: anlatıcısı yapılıyor, ekran kartında birkaç dakika…",
+    added: "{0} eklendi.", removedLang: "{0} kaldırıldı; {1} yer açıldı.",
   },
 };
 
@@ -659,6 +697,7 @@ async function refresh() {
     }
     fact(dl, t("fVersion"), health.version);
     $("check").hidden = !health.latestUrl;
+    if (!languagesShown) loadLanguages();  // once when the page opens; then after each change
   } catch (e) {
     if (e.status === 401) { showSignIn(token ? t("badToken") : ""); return; }
     if (lostAt === null) lostAt = new Date().toLocaleTimeString(LANG, { hour: "2-digit", minute: "2-digit" });
@@ -753,6 +792,82 @@ $("forget").addEventListener("click", () => {
   try { localStorage.removeItem(KEY); } catch (e) { /* nothing was kept */ }
   showSignIn("");
 });
+
+// ---- Languages: installed ones can be removed (their files are deleted), others added. The list is read
+// when the page opens and after a change, and every few seconds only while a language is being added: it
+// adds up folder sizes, which is not worth doing all the time.
+const languageNames = (() => { try { return new Intl.DisplayNames([LANG], { type: "language" }); } catch (e) { return null; } })();
+function displayName(r) {
+  const n = (languageNames && languageNames.of(r.code)) || r.name;
+  return n.charAt(0).toLocaleUpperCase(LANG) + n.slice(1);
+}
+let languagesTimer = null, languagesShown = false;
+let lastLanguages = null;  // what the server said last: the narrator's default description comes from it
+let langMessage = "";      // the result of the last removal, shown until something else is said
+
+function langRow(r, installedCount) {
+  const row = el("div", null, "done-row"), text = el("div");
+  text.append(el("div", displayName(r), "state"),
+              el("div", [r.voice || t("langNoVoice"), r.narrator === "made" ? t("langMadeHere") : null,
+                         r.tested ? null : t("langNew"), r.bytes ? size(r.bytes) : null].filter(Boolean).join(" · "), "muted small"));
+  row.append(text);
+  if (r.installed) {
+    const b = actionButton(t("langRemove"), "danger", () => removeLanguage(r));
+    b.setAttribute("aria-label", t("langRemove") + " " + displayName(r));
+    if (installedCount < 2) { b.disabled = true; b.title = t("langOnly"); }
+    row.append(b);
+  } else if (r.add === "here") {
+    const b = actionButton(t("langAdd"), "", () => addLanguage(r));
+    b.setAttribute("aria-label", t("langAdd") + " " + displayName(r));
+    row.append(b);
+  } else {
+    text.append(el("div", t("langNeedsInstaller"), "muted small"));
+  }
+  return row;
+}
+
+async function loadLanguages() {
+  clearTimeout(languagesTimer);
+  let data;
+  try { data = await api("GET", "/v1/languages"); } catch (e) { return; }
+  lastLanguages = data;
+  const rows = data.languages.slice().sort((a, b) => displayName(a).localeCompare(displayName(b), LANG));
+  const installed = rows.filter(r => r.installed);
+  $("langInstalled").replaceChildren(...installed.map(r => langRow(r, installed.length)));
+  $("langOthers").replaceChildren(...rows.filter(r => !r.installed).map(r => langRow(r, installed.length)));
+  const a = data.adding || {}, name = a.code ? displayName({ code: a.code, name: a.code }) : "";
+  const status = $("langStatus");
+  status.className = a.error ? "error" : "";
+  status.textContent = a.error ? a.error : a.step === "model" ? t("addingModel", name)
+    : a.step === "narrator" ? t("addingNarrator", name) : langMessage;
+  status.hidden = !status.textContent;
+  if (a.step === "model" || a.step === "narrator") languagesTimer = setTimeout(loadLanguages, 3000);
+  else if (a.step === "done" && a.code && languagesShown === "adding") { status.className = ""; status.textContent = t("added", name); status.hidden = false; }
+  languagesShown = a.step === "model" || a.step === "narrator" ? "adding" : true;
+}
+
+async function removeLanguage(r) {
+  const plan = await api("POST", "/v1/languages/" + encodeURIComponent(r.code) + "/remove", { dryRun: true });
+  if (!confirm(t(plan.shared ? "confirmRemoveLangShared" : "confirmRemoveLang", displayName(r), size(plan.bytes)))) return;
+  const voices = Object.entries(plan.unusedVoices || {})
+    .filter(([, v]) => confirm(t("confirmRemoveVoice", v.label, size(v.bytes)))).map(([k]) => k);
+  const done = await api("POST", "/v1/languages/" + encodeURIComponent(r.code) + "/remove", { voices });
+  langMessage = t("removedLang", displayName(r), size(done.freedBytes || 0));
+  await loadLanguages();
+}
+
+async function addLanguage(r) {
+  let narrator = "";
+  if (r.makesNarrator) {
+    const answer = prompt(t("askNarrator", displayName(r)), lastLanguages ? lastLanguages.narrator : "");
+    if (answer === null) return;
+    narrator = answer.trim();
+  }
+  await api("POST", "/v1/languages/" + encodeURIComponent(r.code) + "/add", { narrator });
+  langMessage = "";
+  languagesShown = "adding";
+  await loadLanguages();
+}
 
 if (token) refresh(); else showSignIn("");
 </script>

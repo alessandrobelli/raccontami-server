@@ -20,10 +20,10 @@ import numpy as np
 import torch
 import torchaudio.functional as AF
 
-from .aligners import align_models
+from .aligners import align_models, letter_ids
 from .gpu_share import Pacer
 from .matcher import match
-from .textnorm import norm_parts, strip_accents
+from .textnorm import norm_parts
 
 SR = 16000
 # finds the anchors only (wav2vec2 does the word times): turbo is close to large-v3 and several times faster
@@ -118,13 +118,7 @@ class Aligner:
         self.sep = self.vocab.get("|")
 
     def word_tokens(self, w: str) -> list[int]:
-        out = []
-        for c in w:
-            for cand in (c, c.upper(), strip_accents(c), strip_accents(c).upper()):
-                if cand in self.vocab:
-                    out.append(self.vocab[cand])
-                    break
-        return out
+        return letter_ids(w, self.vocab)
 
     @torch.inference_mode()
     def emissions(self, wav: np.ndarray) -> torch.Tensor:

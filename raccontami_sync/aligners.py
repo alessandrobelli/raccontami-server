@@ -16,16 +16,51 @@ import json
 from pathlib import Path
 from typing import Callable
 
+from . import languages
+
 PREFIX = "RACCONTAMI_ALIGN_MODEL_"
-DEFAULTS = {
-    "en": "facebook/wav2vec2-large-960h-lv60-self",
-    "it": "jonatasgrosman/wav2vec2-large-xlsr-53-italian",
-}
+DEFAULTS = {code: lang["aligner"] for code, lang in languages.LANGUAGES.items()}
+
+
+def letter_ids(word: str, vocab: dict) -> list[int]:
+    """The model's ids for the letters of [word]: each letter as written, in upper case, or without its
+    accent. A letter the model lacks entirely may have a spelled-out form (German ß -> ss); a letter with
+    no match at all is left out."""
+    import unicodedata
+
+    def plain(c):
+        return "".join(x for x in unicodedata.normalize("NFD", c) if unicodedata.category(x) != "Mn")
+
+    def one(c):
+        for cand in (c, c.upper(), plain(c), plain(c).upper()):
+            if cand in vocab:
+                return vocab[cand]
+        return None
+
+    out = []
+    for c in word:
+        found = one(c)
+        if found is not None:
+            out.append(found)
+        elif len(c.casefold()) > 1:
+            out.extend(i for i in (one(x) for x in c.casefold()) if i is not None)
+    return out
+
+
+def fetch(model_id: str) -> None:
+    """Downloads a word-timing model the way the server loads it, so exactly those files are there: its
+    repository may also hold copies for other frameworks and a language model the server never uses.
+    Loaded once on the processor, only to fetch its files, then dropped."""
+    from transformers import AutoModelForCTC, Wav2Vec2Processor
+
+    Wav2Vec2Processor.from_pretrained(model_id)
+    AutoModelForCTC.from_pretrained(model_id)
 
 
 def align_models(env) -> dict[str, str]:
-    """Language -> model: the defaults, with what the settings add or change."""
-    models = dict(DEFAULTS)
+    """Language -> model: those of the installed languages (RACCONTAMI_LANGUAGES, English and Italian
+    without it), with what the settings add or change."""
+    models = {code: DEFAULTS[code] for code in languages.enabled(env)}
     for name, value in env.items():
         if name.startswith(PREFIX) and value.strip():
             models[name[len(PREFIX):].lower()] = value.strip()

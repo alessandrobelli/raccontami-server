@@ -21,10 +21,12 @@ DARK = {"page": "#14181f", "surface": "#1c222b", "line": "#333c49", "text": "#e6
 _one = threading.Lock()  # one window at a time: a second click on the menu does not open a second one
 
 
-def facts(url: str | None, token: str | None, token_file, code: str | None) -> list[tuple[str, str, str]]:
-    """(name, value, note) for each thing the app asks for, in the order the app asks."""
-    out = [("Address", url or "this computer's address on your network, port 8765",
-            "Or tap “Search local network” in the app: it finds this server by itself.")]
+def facts(url: str | None, token: str | None, token_file, code: str | None, port: int = 8765) -> list[tuple[str, str, str]]:
+    """(name, value, note) for each thing the app asks for, in the order the app asks. The app's search
+    looks on port 8765, so on another port it is told to type the address."""
+    note = ("Or tap “Search local network” in the app: it finds this server by itself." if port == 8765 else
+            f"Type this address in the app: its “Search local network” looks on port 8765, and this server uses {port}.")
+    out = [("Address", url or f"this computer's address on your network, port {port}", note)]
     out.append(("Token", token or f"in {token_file}", "The server's password. Paste it into the app, or type it."))
     if code:
         out.append(("Code", code, "The app shows a code when it connects. Confirm there only if it shows this one."))

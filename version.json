@@ -1,5 +1,5 @@
 {
-  "version": "0.3.1",
-  "date": "2026-11-22",
-  "notes": "The setup asks where the models go, so their 20 GB can be on another drive. A chosen models folder now holds every model, also on a computer where HF_HOME is set."
+  "version": "0.4.0",
+  "date": "2026-11-23",
+  "notes": "A real Windows installer (Raccontami-Server-Setup.exe). Choose your languages: 22 to pick from, each downloading only what it needs, with a narrator made on your PC for languages that have none. Add or remove languages on the server's page. The installer also asks which graphics card to use and picks another port when 8765 is taken."
 }

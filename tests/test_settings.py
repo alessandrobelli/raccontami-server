@@ -58,6 +58,23 @@ class LoadTest(unittest.TestCase):
         self.assertEqual("1", env["RACCONTAMI_ONE_JOB"])
 
 
+class GpusTest(unittest.TestCase):
+    def test_the_chosen_cards_become_the_ones_cuda_sees(self):
+        env = {"RACCONTAMI_GPUS": "1"}
+        settings.use_gpus(env)
+        self.assertEqual("1", env["CUDA_VISIBLE_DEVICES"])
+
+    def test_without_a_choice_every_card_is_seen(self):
+        env = {}
+        settings.use_gpus(env)
+        self.assertNotIn("CUDA_VISIBLE_DEVICES", env)
+
+    def test_a_choice_made_where_the_server_starts_wins(self):
+        env = {"RACCONTAMI_GPUS": "1", "CUDA_VISIBLE_DEVICES": "0"}
+        settings.use_gpus(env)
+        self.assertEqual("0", env["CUDA_VISIBLE_DEVICES"])
+
+
 class AwakeTest(unittest.TestCase):
     def test_wanted_on_windows(self):
         self.assertTrue(awake.wanted("win32", {}))

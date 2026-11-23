@@ -51,3 +51,24 @@ def load(env=None) -> list[str]:
         env[name] = value
         applied.append(name)
     return applied
+
+
+def set_line(text: str, name: str, value: str, note: str) -> str:
+    """[text] with its [name] line set to [value]: a line the installer or the page owns, so a new choice
+    replaces it where it is and every other line stays as it was; a new line comes after [note]."""
+    lines, found = text.splitlines(), False
+    for i, line in enumerate(lines):
+        key, eq, _ = line.partition("=")
+        if eq and not line.lstrip().startswith("#") and key.strip() == name:
+            lines[i], found = f"{name}={value}", True
+    if not found:
+        return text.rstrip("\n") + f"\n\n{note}\n{name}={value}\n"
+    return "\n".join(lines) + "\n"
+
+
+def use_gpus(env=None) -> None:
+    """The graphics cards chosen in the installer (RACCONTAMI_GPUS, "0" or "0,1") become the only ones the
+    server and its voices see. A CUDA_VISIBLE_DEVICES already set where the server starts wins."""
+    env = os.environ if env is None else env
+    if env.get("RACCONTAMI_GPUS", "").strip():
+        env.setdefault("CUDA_VISIBLE_DEVICES", env["RACCONTAMI_GPUS"].replace(" ", ""))

@@ -31,10 +31,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import queue
 import secrets
 import shutil
+import subprocess
 import threading
 import time
 import traceback
@@ -43,10 +45,19 @@ from pathlib import Path
 
 from .paths import DATA, MODELS as MODELS_DIR, ONNX, model_homes  # noqa: E402
 os.environ.update(model_homes(os.environ, MODELS_DIR))
+# the server's window is for people: no download bars, and none of the libraries' notes that change nothing
+# (Windows without symlinks, no Hugging Face account, torch's "Redirects are not supported")
+for _name, _value in (("HF_HUB_DISABLE_PROGRESS_BARS", "1"), ("HF_HUB_DISABLE_SYMLINKS_WARNING", "1"), ("HF_HUB_VERBOSITY", "error"),
+                      ("TRANSFORMERS_VERBOSITY", "error"),
+                      # a word-timing model with only the older weight format is loaded as it is: otherwise the
+                      # loader fetches a converted copy in the background, 1.3 GB more, at the first sync
+                      ("DISABLE_SAFETENSORS_CONVERSION", "1")):
+    os.environ.setdefault(_name, _value)
+logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").setLevel(logging.ERROR)
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import aligners, awake, banner, connect_window, gpu_share, narrate, pipeline, single, tray, unfinished  # noqa: E402
+from . import aligners, awake, banner, connect_window, gpu_share, langmanage, languages, narrate, paths, pipeline, settings, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
@@ -90,7 +101,7 @@ def hm(seconds: float) -> str:
     return f"{seconds // 3600} h {seconds % 3600 // 60:02d} min"
 
 
-LANG_NAMES = {"en": "English", "it": "Italian"}
+LANG_NAMES = {code: lang["name"] for code, lang in languages.LANGUAGES.items()}
 # how the app names this server in its texts ("Narrate it on <name>"); the user can change it there too
 NAME = os.environ.get("RACCONTAMI_NAME") or __import__("platform").node() or "Raccontami server"
 STAGE_NAMES = {"decode": "reading the audio", "transcribe": "listening (Whisper)", "match": "matching the text",
@@ -433,14 +444,14 @@ async def _lifespan(_app):
     held = [j for j in jobs.values() if j.state == unfinished.HELD]
     # the token is read by somebody at this computer, as in the window; with RACCONTAMI_TOKEN there is no file
     icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA,
-                      connect=lambda: connect_window.facts(for_phone, TOKEN, token_file, code))
+                      connect=lambda: connect_window.facts(for_phone, TOKEN, token_file, code, tray.own_port()))
 
     def startup(token: str | None) -> list[str]:
         """The start-up block; [token] None says which file holds it instead."""
         voices = narrate.voices(DATA)
         return banner.render([
             ("CONNECT THE PHONE   in the app: Settings → Server",
-             connect_window.facts(for_phone, token, token_file, code)),
+             connect_window.facts(for_phone, token, token_file, code, tray.own_port())),
             ("THIS SERVER", [
                 ("Name", NAME, "Shown in the app. RACCONTAMI_NAME changes it."),
                 ("GPU", _gpu_name() or "no CUDA GPU found", ""),
@@ -529,10 +540,12 @@ def create_job(audio: UploadFile = File(...), meta: str = Form(...)):
     try:
         m = json.loads(meta)
         lang, tokens = m["lang"], m["tokens"]
-        assert lang in pipeline.ALIGN_MODELS and isinstance(tokens, list) and tokens
+        assert isinstance(tokens, list) and tokens
         assert all(isinstance(t, str) for t in tokens)
     except Exception:
-        raise HTTPException(status_code=400, detail="meta must be JSON with lang (en|it) and a non-empty tokens list")
+        raise HTTPException(status_code=400, detail="meta must be JSON with lang and a non-empty tokens list")
+    if lang not in pipeline.ALIGN_MODELS:
+        raise HTTPException(status_code=400, detail=languages.missing(lang))  # plain words: the phone shows them
 
     tmp = JOBS / f"upload-{secrets.token_hex(6)}"
     h = hashlib.sha256()
@@ -572,7 +585,6 @@ def create_job(audio: UploadFile = File(...), meta: str = Form(...)):
 def create_narration(body: dict = Body(...)):
     try:
         lang, tokens, paragraphs = body["lang"], body["tokens"], body["paragraphs"]
-        assert lang in narrate.voices(DATA) and lang in pipeline.ALIGN_MODELS
         assert isinstance(tokens, list) and tokens and all(isinstance(t, str) for t in tokens)
         assert isinstance(paragraphs, list) and all(isinstance(p, int) for p in paragraphs)
         # the first word to read: what is before it (title page, index) is in the text but not narrated
@@ -597,6 +609,11 @@ def create_narration(body: dict = Body(...)):
     except Exception:
         raise HTTPException(status_code=400, detail="body must be JSON with lang, a non-empty tokens list, paragraphs, "
                                                     "and optional start, silent, narrators and cast")
+    # plain words: the phone shows them
+    if lang not in pipeline.ALIGN_MODELS:
+        raise HTTPException(status_code=400, detail=languages.missing(lang))
+    if lang not in narrate.voices(DATA):
+        raise HTTPException(status_code=400, detail=languages.no_voice(lang))
     voice = narrate.voices(DATA)[lang]
     key = {"kind": "narrate", "v": narrate.VERSION, "lang": lang, "tokens": tokens, "paragraphs": paragraphs,
            "voice": {k: v for k, v in voice.items() if k != "python"}}
@@ -816,6 +833,121 @@ def hold_all():
 def continue_all():
     """Continues everything that is on hold."""
     return {"message": continue_everything()}
+
+
+# ---- The languages, managed from the page (langmanage.py): removed at once, added in the background.
+HUB = Path(os.environ["HF_HOME"]) / "hub"
+ADDING = {"code": None, "step": None, "error": None}  # the language being added, what it is doing, or why it stopped
+_adding_lock = threading.Lock()
+LANGUAGES_NOTE = "# The languages installed: set by the installer and by the server's page."
+
+
+def _job_language(j) -> str | None:
+    return (read_json(j.dir / "meta.json") or {}).get("lang")
+
+
+def _set_languages(langs: list[str]) -> None:
+    """The languages written to settings.txt and applied at once: what the server offers and syncs."""
+    file = settings.home() / settings.FILE
+    try:
+        text = file.read_text(encoding="utf-8-sig")
+    except OSError:
+        text = ""
+    file.write_text(settings.set_line(text, "RACCONTAMI_LANGUAGES", ",".join(langs), LANGUAGES_NOTE), encoding="utf-8")
+    os.environ["RACCONTAMI_LANGUAGES"] = ",".join(langs)
+    current = aligners.align_models(os.environ)
+    for code in list(pipeline.ALIGN_MODELS):
+        if code not in current:
+            del pipeline.ALIGN_MODELS[code]
+    pipeline.ALIGN_MODELS.update(current)
+
+
+@app.get("/v1/languages", dependencies=[Depends(auth)])
+def list_languages():
+    """Every language the server can have: installed or not, its voice, the space it takes, how to add it."""
+    return {"languages": langmanage.status(languages.enabled(os.environ), narrate.installed_voices(), HUB, MODELS_DIR, DATA),
+            "shared": not langmanage.ours(HUB, MODELS_DIR), "adding": dict(ADDING), "narrator": languages.NARRATOR}
+
+
+@app.post("/v1/languages/{code}/remove", dependencies=[Depends(auth)])
+def remove_language(code: str, body: dict = Body(default={})):
+    """Removes a language: its word-timing model and its narrator made here are deleted (in the server's own
+    models folder only), and the voice models named in "voices" if no remaining language needs them."""
+    enabled = languages.enabled(os.environ)
+    plan = langmanage.remove_plan(code, enabled, narrate.installed_voices(), HUB, MODELS_DIR, DATA, paths.TTS)
+    if plan["refused"]:
+        raise HTTPException(status_code=400, detail=plan["refused"])
+    if body.get("dryRun"):  # what the page's question says before anything is deleted
+        return {"bytes": plan["bytes"], "shared": plan["shared"],
+                "unusedVoices": {v: {"label": u["label"], "bytes": u["bytes"]} for v, u in plan["unusedVoices"].items()}}
+    if ADDING.get("step") in ("model", "narrator"):  # it may need the voice model, and it writes settings.txt too
+        raise HTTPException(status_code=409, detail=f"{languages.name(ADDING['code'])} is being added: wait until it is done.")
+    if any(j.state in ("queued", "running", unfinished.HELD) and _job_language(j) == code for j in jobs.values()):
+        raise HTTPException(status_code=409, detail=f"{languages.name(code)} still has work on this server. "
+                                                    "Finish it or delete it first, then remove the language.")
+    voices = [v for v in body.get("voices", []) if v in plan["unusedVoices"]]
+    if voices and any(j.state == "running" for j in jobs.values()):
+        raise HTTPException(status_code=409, detail="Wait until the work running now has ended: the voice model may be in use.")
+    gone = plan["delete"] + [p for v in voices for p in plan["unusedVoices"][v]["delete"]]
+    freed = plan["bytes"] + sum(plan["unusedVoices"][v]["bytes"] for v in voices)
+    for p in gone:
+        if p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
+        else:
+            p.unlink(missing_ok=True)
+    _set_languages(plan["languages"])
+    log(f"language removed: {languages.name(code)}" + (f", with {', '.join(voices)}" if voices else "")
+        + (f"; {freed / 1e9:.1f} GB freed" if freed >= 1e8 else f"; {freed / 1e6:.0f} MB freed")
+        + (" (models kept: the Hugging Face folder is shared)" if plan["shared"] else ""))
+    return {"removed": code, "freedBytes": freed, "shared": plan["shared"]}
+
+
+def _add_language(code: str, description: str) -> None:
+    lang = languages.LANGUAGES[code]
+    try:
+        ADDING.update(step="model", error=None)
+        log(f"adding {lang['name']}: its word-timing model")
+        aligners.fetch(lang["aligner"])
+        narrator = DATA / "narrators" / f"voxcpm2_{code}_ref.wav"
+        if languages.narrators_to_make([code]) and not narrator.exists():
+            ADDING.update(step="narrator")
+            log(f"adding {lang['name']}: making its narrator (a few minutes on the graphics card)")
+            done = subprocess.run([narrate._voice_python("voxcpm2"), str(paths.REPO / "tools" / "make_narrator.py"), code,
+                                   str(narrator), "--description", description or languages.NARRATOR],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+            if done.returncode != 0:
+                raise RuntimeError(done.stderr.strip().splitlines()[-1] if done.stderr.strip() else "the narrator could not be made")
+        _set_languages(languages.enabled(os.environ) + [code])
+        ADDING.update(step="done")
+        log(f"language added: {lang['name']}")
+    except Exception as e:  # noqa: BLE001  said on the page; the language stays off
+        ADDING.update(step=None, error=f"{lang['name']} could not be added: {unfinished.for_phone(str(e)) or e}")
+        log(f"adding {lang['name']} failed: {e}")
+
+
+@app.post("/v1/languages/{code}/add", dependencies=[Depends(auth)])
+def add_language(code: str, body: dict = Body(default={})):
+    """Adds a language whose voice model is installed: its word-timing model is downloaded and, for a
+    VoxCPM2 language without a narrator, one is made from body "narrator" (a description). In the background;
+    GET /v1/languages says how it goes. A language needing a voice model not installed needs the installer."""
+    if code not in languages.LANGUAGES:
+        raise HTTPException(status_code=404, detail="This language is not one the server knows.")
+    if code in languages.enabled(os.environ):
+        raise HTTPException(status_code=400, detail=f"{languages.name(code)} is already installed.")
+    voice = next(iter(languages.voices_needed([code], languages.samples(DATA))), None)
+    if voice and voice not in narrate.installed_voices():
+        raise HTTPException(status_code=409, detail=f"{languages.name(code)} needs the voice model "
+                            f"{languages.VOICE_MODELS[voice]['label']}, which only the installer can add: open it again and tick "
+                            f"{languages.name(code)}.")
+    if any(j.state == "running" for j in jobs.values()) and languages.narrators_to_make([code]):
+        raise HTTPException(status_code=409, detail="Wait until the work running now has ended: making a narrator needs the graphics card.")
+    with _adding_lock:
+        if ADDING["step"] in ("model", "narrator"):
+            raise HTTPException(status_code=409, detail=f"{languages.name(ADDING['code'])} is being added: wait until it is done.")
+        ADDING.update(code=code, step="model", error=None)
+    threading.Thread(target=_add_language, args=(code, str(body.get("narrator") or "").strip()), daemon=True,
+                     name="add-language").start()
+    return {"adding": code}
 
 
 @app.get("/v1/jobs", dependencies=[Depends(auth)])

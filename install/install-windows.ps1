@@ -192,6 +192,33 @@ if (-not (Test-Path $settings)) {
 }
 if (-not $modelsFromEnv) { Add-ModelsSetting $settings $Models $usualModels }
 
+# The port: 8765, unless settings.txt or the computer names another. On a new install, when another program
+# holds 8765, the next free port is chosen and kept in settings.txt. A Python program on it may be the server.
+function Get-PortListener($port) {
+    $c = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($c) { $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue; if ($p) { $p.ProcessName } else { "another program" } }
+}
+$Port = 0
+if ($env:RACCONTAMI_PORT -match '^\d+$') { $Port = [int]$env:RACCONTAMI_PORT }
+if (-not $Port -and (Test-Path $settings)) {
+    $line = Get-Content -LiteralPath $settings -Encoding UTF8 | Where-Object { $_ -match '^\s*RACCONTAMI_PORT\s*=\s*"?(\d+)"?\s*$' } | Select-Object -Last 1
+    if ($line -and $line -match '(\d+)') { $Port = [int]$Matches[1] }
+}
+$portNamed = [bool]$Port
+if (-not $Port) { $Port = 8765 }
+$holder = Get-PortListener $Port
+if ($holder -and $holder -match '^python') {
+    Fail "Port $Port is in use by $holder, probably the Raccontami server. Stop it first (its icon next to the clock, Stop the server), then run this again."
+} elseif ($holder -and -not $portNamed -and $fresh) {
+    $free = 8766..8799 | Where-Object { -not (Get-PortListener $_) } | Select-Object -First 1
+    if (-not $free) { Fail "Ports 8765 to 8799 are all in use. Free one, or set RACCONTAMI_PORT in $settings, then run this again." }
+    Write-Host "Port 8765 is used by $holder, so the server will use port $free. The app's Search local network looks on 8765: type the address the server's window shows."
+    Add-Content -Encoding utf8 -LiteralPath $settings @("", "# The server's port: 8765 was taken by another program when installing. The phone's search looks on 8765, so type the address the server's window shows.", "RACCONTAMI_PORT=$free")
+    $Port = $free
+} elseif ($holder) {
+    Write-Host "Port $Port, the server's port, is used by ${holder}: the server can start only when that program stops, or with another port (RACCONTAMI_PORT in $settings)."
+}
+
 function Ensure-Env($dir, $requirements, $label) {
     Step "Python environment: $label ($dir)"
     $python = "$dir\Scripts\python.exe"
@@ -237,7 +264,7 @@ if (-not $PhoneModels -or $SkipPhoneModels) {
 Step "Settings and start script"
 Write-Host $settings
 Write-BatchFile $start @"
-rem Starts the Raccontami server (port 8765). Made by install-windows.ps1, which writes it anew at
+rem Starts the Raccontami server (port $Port). Made by install-windows.ps1, which writes it anew at
 rem every run: settings go in settings.txt beside this file, not here.
 title Raccontami server
 set RACCONTAMI_HOME=$H
@@ -270,8 +297,8 @@ function Ask($question) {
 }
 
 Step "Your network"
-$ruleName = "Raccontami 8765"
-$ruleCommand = "New-NetFirewallRule -DisplayName '$ruleName' -Direction Inbound -Protocol TCP -LocalPort 8765 -RemoteAddress LocalSubnet -Action Allow"
+$ruleName = "Raccontami $Port"
+$ruleCommand = "New-NetFirewallRule -DisplayName '$ruleName' -Direction Inbound -Protocol TCP -LocalPort $Port -RemoteAddress LocalSubnet -Action Allow"
 $ruleThere = [bool](Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
 if ($ruleThere) {
     Write-Host "Windows firewall: phones on your network can already reach the server"
@@ -281,7 +308,7 @@ if ($ruleThere) {
         Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList "-NoProfile", "-Command", $ruleCommand
         $ruleThere = [bool](Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
     } catch { $ruleThere = $false }
-    Write-Host $(if ($ruleThere) { "Windows firewall: rule added (port 8765, from your own network only)" }
+    Write-Host $(if ($ruleThere) { "Windows firewall: rule added (port $Port, from your own network only)" }
                  else { "Windows firewall: the rule was not added. The line to run later is below." })
 }
 
