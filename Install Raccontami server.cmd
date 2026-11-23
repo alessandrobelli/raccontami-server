@@ -2,6 +2,8 @@
 rem Sets up the Raccontami server on this computer: save this one file and double-click it.
 rem It needs nothing installed first. What it does is in install\setup.ps1, which it runs: from
 rem beside this file when it is part of a copy of the code, otherwise straight from GitHub.
+rem Users download it from the GitHub release "installer" (README, Install). After a change here, upload it
+rem there again: gh release upload installer <copy named Install-Raccontami-server.cmd> --clobber
 title Raccontami server setup
 setlocal
 if exist "%~dp0install\setup.ps1" (
