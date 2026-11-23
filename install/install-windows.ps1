@@ -79,9 +79,9 @@ function Add-ModelsSetting($file, $folder, $usual) {
 }
 
 Step "Checking the computer"
-$setupHint = "Or use the one-file setup, which brings its own: see the README."
+$setupHint = "Or use the installer (Raccontami-Server-Setup.exe), which brings its own: see the README."
 if ($Python) {
-    # given by the one-file setup (install\setup.ps1), which brought a Python of the server's own
+    # a Python of the server's own, given by the caller
     try { $py = (& $Python -c "import sys; print(sys.executable if sys.version_info[:2] == (3, 12) else '')") } catch { $py = $null }
     if (-not $py) { Fail "$Python is not a Python 3.12." }
 } else {
@@ -89,7 +89,7 @@ if ($Python) {
     if (-not $py) { Fail "Python 3.12 not found. Install it from python.org (tick 'Add to PATH'), then run this again. $setupHint" }
 }
 Write-Host "Python 3.12: $py"
-# an ffmpeg brought by the one-file setup is in the home folder; the server looks there too when it starts
+# an ffmpeg brought by the installer (.exe) is in the home folder; the server looks there too when it starts
 if (Test-Path "$H\tools\ffmpeg\bin\ffmpeg.exe") { $env:PATH = "$H\tools\ffmpeg\bin;$env:PATH" }
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     Fail "ffmpeg not found. Install it (winget install Gyan.FFmpeg), open a new terminal and run this again. $setupHint"

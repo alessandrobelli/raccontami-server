@@ -160,7 +160,7 @@ Turn this on only for a phone that can reach this computer but not GitHub, such 
 without internet. It takes a few minutes of processor work, a few GB of memory while it runs, and
 about 400 MB of disk:
 
-- Windows, from a clone: add `-PhoneModels` to the install command. After the one-file setup, in
+- Windows, from a clone: add `-PhoneModels` to the install command. After the `.exe` installer, in
   PowerShell (for another folder than the usual one, change both paths and first set
   `$env:RACCONTAMI_HOME` to that folder):
   ```powershell
