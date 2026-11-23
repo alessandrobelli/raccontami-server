@@ -1,0 +1,60 @@
+name: Windows installer
+
+# Builds installer\output\Raccontami-Server-Setup.exe on a clean Windows machine with a pinned Inno Setup,
+# scans it with Microsoft Defender's on-demand scanner, and keeps it as a download of this run.
+# It does not publish it: the release file is replaced by hand, after a test install on a clean PC.
+# A file scan only finds known signatures; it would not catch a behaviour detection (see docs/installer-test.md).
+on:
+  workflow_dispatch:
+  push:
+    paths: ["installer/**", "install/install.py", ".github/workflows/installer.yml"]
+  pull_request:
+    paths: ["installer/**", "install/install.py", ".github/workflows/installer.yml"]
+
+permissions:
+  contents: read
+
+env:
+  INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe
+  INNO_SHA256: A549929319F9120716677C685535CA4671E4B937B5FDC87E2585F32D8EB30E8C
+
+jobs:
+  build:
+    name: Build the installer
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inno Setup 6.7.4 (pinned, signature and hash checked)
+        shell: pwsh
+        run: |
+          curl.exe -sSL --fail -o "$env:RUNNER_TEMP\innosetup.exe" $env:INNO_URL
+          if ((Get-FileHash "$env:RUNNER_TEMP\innosetup.exe").Hash -ne $env:INNO_SHA256) { throw "Inno Setup's hash changed" }
+          if ((Get-AuthenticodeSignature "$env:RUNNER_TEMP\innosetup.exe").Status -ne 'Valid') { throw "Inno Setup is not validly signed" }
+          Start-Process "$env:RUNNER_TEMP\innosetup.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/NOICONS", "/DIR=$env:RUNNER_TEMP\inno" -Wait
+          if (-not (Test-Path "$env:RUNNER_TEMP\inno\ISCC.exe")) { throw "Inno Setup did not install" }
+
+      - name: Build
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1 -Iscc "$env:RUNNER_TEMP\inno\ISCC.exe"
+
+      - name: Defender file scan
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path installer\output\Raccontami-Server-Setup.exe).Path
+          $mp = Get-ChildItem "C:\ProgramData\Microsoft\Windows Defender\Platform" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $mp) { Write-Host "::warning::Microsoft Defender is not available on this runner: no scan"; exit 0 }
+          Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AntivirusSignatureVersion | Format-List
+          & (Join-Path $mp.FullName "MpCmdRun.exe") -Scan -ScanType 3 -File $exe -DisableRemediation
+          if ($LASTEXITCODE -eq 2) { throw "Defender found a threat in the installer" }
+          if ($LASTEXITCODE) { Write-Host "::warning::The Defender scan could not run (exit $LASTEXITCODE)" }
+          "SHA-256: $((Get-FileHash $exe).Hash)" | Tee-Object -FilePath installer\output\SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Raccontami-Server-Setup
+          path: |
+            installer/output/Raccontami-Server-Setup.exe
+            installer/output/SHA256.txt
+          if-no-files-found: error

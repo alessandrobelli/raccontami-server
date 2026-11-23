@@ -3,3 +3,8 @@ __pycache__/
 *.log
 /server-data/
 token.txt
+
+# the Windows installer's build (installer\build.ps1)
+/installer/cache/
+/installer/build/
+/installer/output/
