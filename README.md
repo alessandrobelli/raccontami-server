@@ -55,8 +55,16 @@ same steps but have not been run on real hardware yet; reports welcome.
    - **Folder:** where the server goes, usually `C:\Users\<you>\raccontami`. Its code, its own
      Python and ffmpeg, and its Python packages (about 15 GB) go there. Nothing is installed in
      Windows itself, and no administrator is needed.
-   - **Models:** the speech and voice models (about 20 GB) can go on another drive, for example
-     `E:\raccontami-models`. The free space is checked on each drive.
+   - **Models:** the speech and voice models can go on another drive, for example
+     `E:\raccontami-models`.
+   - **Languages:** the languages of your books (see [Languages](#languages)). Only what they need is
+     downloaded: English alone is about 17 GB in all, each further language adds a little over 1 GB,
+     plus about 10 GB when it needs a voice model not chosen yet. The box under the list names every
+     model the ticked languages use. The free space is checked on each drive.
+   - **Narrator** (only for a language whose narrator is made on your PC): how it should sound, see
+     [Narrators made on your PC](#languages).
+   - **Graphics card** (only when the PC has several NVIDIA cards, or none that is suitable): which
+     card the server works on, or why none can be used. The choice is kept as `RACCONTAMI_GPUS`.
    - **Phones on your home network:** adds a Windows firewall rule, for which Windows asks an
      administrator's permission once.
    - **Start at login:** the server then starts without a window, as an icon next to the clock.
@@ -271,7 +279,9 @@ looks.
 
 To update on Windows, stop the server, download the installer again from the same link (it always
 gives the newest version) and open it: it finds the folder by itself and brings the new code and what
-is missing. Your settings, token, certificate and jobs are kept. With a git clone instead: `git pull`,
+is missing. Your settings, token, certificate, jobs and narrators are kept, and Python packages that did
+not change are not installed again, so an update without new languages takes a minute or two. With a
+git clone instead: `git pull`,
 then the install script again (the same on Linux).
 
 ### Removing it
@@ -347,14 +357,60 @@ real person.
 
 ## Languages
 
-The server syncs English and Italian. Each language has a speech model that times every word:
+The installer asks which languages to install; the server syncs and narrates only those. The list is
+in [raccontami_sync/languages.py](raccontami_sync/languages.py). Each language has a speech model that
+times every word and, to be read aloud, a voice:
 
-| Language | Model |
-|---|---|
-| English | [facebook/wav2vec2-large-960h-lv60-self](https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self) |
-| Italian | [jonatasgrosman/wav2vec2-large-xlsr-53-italian](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-italian) |
+| Language | Word timing | Voice | Tried on whole books |
+|---|---|---|---|
+| English | [facebook/wav2vec2-large-960h-lv60-self](https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self) | Qwen3-TTS | yes |
+| Italian | [jonatasgrosman/wav2vec2-large-xlsr-53-italian](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-italian) | VoxCPM2 (Qwen3-TTS without it) | yes |
+| Spanish | [jonatasgrosman/wav2vec2-large-xlsr-53-spanish](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-spanish) | Qwen3-TTS | new |
+| Turkish | [mpoyraz/wav2vec2-xls-r-300m-cv7-turkish](https://huggingface.co/mpoyraz/wav2vec2-xls-r-300m-cv7-turkish) (CC BY 4.0, by Muhammet Poyraz) | VoxCPM2, narrator made on your PC | new |
+| German | [jonatasgrosman/wav2vec2-large-xlsr-53-german](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-german) | Qwen3-TTS | new |
+| French | [jonatasgrosman/wav2vec2-large-xlsr-53-french](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-french) | Qwen3-TTS | new |
+| Portuguese | [jonatasgrosman/wav2vec2-large-xlsr-53-portuguese](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-portuguese) | Qwen3-TTS | new |
+| Russian | [jonatasgrosman/wav2vec2-large-xlsr-53-russian](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-russian) | Qwen3-TTS | new |
+| Arabic | [jonatasgrosman/wav2vec2-large-xlsr-53-arabic](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-arabic) | VoxCPM2, narrator made on your PC | new |
+| Danish | [Alvenir/wav2vec2-base-da-ft-nst](https://huggingface.co/Alvenir/wav2vec2-base-da-ft-nst) | VoxCPM2, narrator made on your PC | new |
+| Dutch | [jonatasgrosman/wav2vec2-large-xlsr-53-dutch](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-dutch) | VoxCPM2, narrator made on your PC | new |
+| Finnish | [Finnish-NLP/wav2vec2-xlsr-300m-finnish-lm](https://huggingface.co/Finnish-NLP/wav2vec2-xlsr-300m-finnish-lm) | VoxCPM2, narrator made on your PC | new |
+| Greek | [lighteternal/wav2vec2-large-xlsr-53-greek](https://huggingface.co/lighteternal/wav2vec2-large-xlsr-53-greek) | VoxCPM2, narrator made on your PC | new |
+| Hebrew | [imvladikon/wav2vec2-xls-r-300m-lm-hebrew](https://huggingface.co/imvladikon/wav2vec2-xls-r-300m-lm-hebrew) | VoxCPM2, narrator made on your PC | new |
+| Hindi | [Harveenchadha/hindi_base_wav2vec2](https://huggingface.co/Harveenchadha/hindi_base_wav2vec2) | VoxCPM2, narrator made on your PC | new |
+| Indonesian | [indonesian-nlp/wav2vec2-indonesian-javanese-sundanese](https://huggingface.co/indonesian-nlp/wav2vec2-indonesian-javanese-sundanese) | VoxCPM2, narrator made on your PC | new |
+| Norwegian | [NbAiLab/nb-wav2vec2-300m-bokmaal](https://huggingface.co/NbAiLab/nb-wav2vec2-300m-bokmaal) | VoxCPM2, narrator made on your PC | new |
+| Polish | [jonatasgrosman/wav2vec2-large-xlsr-53-polish](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-polish) | VoxCPM2, narrator made on your PC | new |
+| Swahili | [Akashpb13/Swahili_xlsr](https://huggingface.co/Akashpb13/Swahili_xlsr) | VoxCPM2, narrator made on your PC | new |
+| Swedish | [KBLab/wav2vec2-large-voxrex-swedish](https://huggingface.co/KBLab/wav2vec2-large-voxrex-swedish) (CC0) | VoxCPM2, narrator made on your PC | new |
+| Tagalog | [Khalsuu/filipino-wav2vec2-l-xls-r-300m-official](https://huggingface.co/Khalsuu/filipino-wav2vec2-l-xls-r-300m-official) | VoxCPM2, narrator made on your PC | new |
+| Vietnamese | [leduytan93/Fine-Tune-XLSR-Wav2Vec2-Speech2Text-Vietnamese](https://huggingface.co/leduytan93/Fine-Tune-XLSR-Wav2Vec2-Speech2Text-Vietnamese) | VoxCPM2, narrator made on your PC | new |
 
-A setting adds a language, or changes the model of one. The language code is the end of the name:
+All word-timing models are free for commercial use (Apache 2.0 unless marked). The choice is kept in
+`settings.txt` as `RACCONTAMI_LANGUAGES=en,es`; opening the installer again adds or removes languages
+(it asks before deleting the files of a language you untick). Without the line, as on a server installed before languages
+could be chosen, it is English and Italian. Chinese, Japanese, Korean and Thai are not offered yet:
+they write no spaces between words, which the word timing does not handle yet. Malay waits for a
+word-timing model that may be used commercially.
+
+**Narrators made on your PC.** VoxCPM2 speaks 30 languages but copies its narrator from a short voice
+sample, and only Italian ships one. For the other languages it narrates, the installer asks how the
+narrator should sound (a description such as "a deep, slow storyteller", in any language) and VoxCPM2
+designs that voice on the graphics card, a few minutes per language after the downloads. The sample is
+kept in `server-data\narrators\`. Opening the installer again keeps it, unless **Replace the narrators already made**
+is ticked. Your own recording works too: see [Voices](#voices).
+
+**Adding and removing languages later.** The server's page has a **Languages** card. **Remove** takes a
+language off the server and deletes its word-timing model and the narrator made for it. When no language
+left needs a voice model, the page asks whether to delete that too. **Add** downloads a language's
+word-timing model (and makes its narrator, asking how it should sound) when its voice model is already
+installed; a language that needs a voice model you don't have says to open the installer again and tick
+it. Downloaded models are deleted only inside the server's own models folder: when they live in a Hugging
+Face folder other programs share (`HF_HOME`), the language is switched off and its models are kept (the
+narrator made for it is still deleted). Opening the
+installer again and unticking a language asks the same question: delete its files, or keep them.
+A setting adds a language that is not in the list, or changes the model of one. The language code is
+the end of the name:
 
 ```
 RACCONTAMI_ALIGN_MODEL_FR=jonatasgrosman/wav2vec2-large-xlsr-53-french
@@ -367,18 +423,18 @@ start with a model of another kind, with a name Hugging Face does not have, or w
 Whisper does not know, and its message names the setting that is wrong. The model is
 downloaded at the first sync in that language.
 
-- **The app** offers a language for a story once it has a phone model for it (Settings → Sync →
-  **Add another language**), and syncs stories in such a language **on the phone**. The current
-  app sends only English and Italian stories to the server, so a language added here is not used
-  by it yet.
-- **Narration** needs a voice for the language as well (see [Voices](#voices)). Only English and
-  Italian have one.
+- **The app** reads the server's languages from `/v1/health` (`languages` for syncing,
+  `narration` for reading aloud) in the versions that support it; older apps send only English
+  and Italian stories to the server, and sync others on the phone. A server asked for a language it
+  does not have answers in plain words that the phone shows.
+- **Narration** needs a voice for the language as well (see [Voices](#voices)).
 - **Numbers** in the text are spelled out in words when [num2words](https://pypi.org/project/num2words/)
   knows the language. Otherwise they stay digits, which the model cannot hear: those words take
   their times from the words around them. Apostrophes split words only in Italian
-  ("l'amico" is "l amico"), elsewhere they are dropped ("don't" is "dont").
-- Only the two models in the table have been tried on whole books. A changed model applies to
-  audiobooks synced from then on.
+  ("l'amico" is "l amico"), elsewhere they are dropped ("don't" is "dont"). A letter a model does
+  not have is spelled out when it can be (German ß as ss), otherwise taken without its accent.
+- Only English and Italian have been tried on whole books. A changed model applies to audiobooks
+  synced from then on.
 
 ## Settings
 
@@ -397,7 +453,9 @@ as an environment variable (a service file, `docker run -e`) wins over the file.
 | `RACCONTAMI_KEEP_AWAKE` | on | `0`: Windows may go to sleep while a job runs |
 | `RACCONTAMI_TRAY` | on | `0`: no icon next to the clock |
 | `RACCONTAMI_ASK_SECONDS` | 60 | how long a server started in a window waits for an answer about unfinished work; 0 = for ever |
-| `RACCONTAMI_HOST`, `RACCONTAMI_PORT` | `0.0.0.0`, `8765` | where the server listens |
+| `RACCONTAMI_HOST`, `RACCONTAMI_PORT` | `0.0.0.0`, `8765` | where the server listens. The installer picks the next free port and writes it here when another program holds 8765; the app's **Search local network** looks on 8765, so on another port type the address the server's window shows |
+| `RACCONTAMI_LANGUAGES` | `en,it` | the installed languages (see [Languages](#languages)); the installer sets this line |
+| `RACCONTAMI_GPUS` | all | the NVIDIA card(s) the server uses, by their number in `nvidia-smi` (`1`); the installer sets it when the PC has several |
 | `RACCONTAMI_TOKEN` | random, saved in token.txt | the app's password |
 | `RACCONTAMI_WHISPER_MODEL` | `turbo` | Whisper model for syncs: `small` or `medium` for less graphics memory, `large-v3` for a little more accuracy, several times slower. It only places the anchors (the word times come from wav2vec2), so turbo is enough on any GPU that fits it. Applies to audiobooks synced from then on |
 | `RACCONTAMI_ALIGN_MODEL_<XX>` | English, Italian | the model that times the words of language `XX`: adds a language or changes its model (see [Languages](#languages)) |
@@ -449,5 +507,5 @@ each other. The API the app uses is described in [docs/api.md](docs/api.md).
 ## Licence
 
 Apache 2.0, see [LICENSE](LICENSE). The models are downloaded from their authors under their own
-licences, all free for commercial use: Whisper (MIT), wav2vec2 aligners (Apache 2.0), VoxCPM2
-(Apache 2.0), Qwen3-TTS (Apache 2.0).
+licences, all free for commercial use: Whisper (MIT), wav2vec2 aligners (Apache 2.0; the Turkish
+one, by Muhammet Poyraz, CC BY 4.0), VoxCPM2 (Apache 2.0), Qwen3-TTS (Apache 2.0).

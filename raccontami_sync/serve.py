@@ -59,6 +59,7 @@ def main() -> None:
     from . import settings
 
     settings.load()  # before anything reads a setting: paths.py does when it is imported
+    settings.use_gpus()  # before torch is imported: CUDA reads it once
     use_own_tools()
     from .paths import DATA
 

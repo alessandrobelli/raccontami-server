@@ -43,7 +43,8 @@ PAUSE_SPLIT = 0.35
 PAUSE_EMPTY = 1.0  # paragraphs with nothing to say, such as "* * *"
 ALIGNED_ENOUGH = 0.7
 
-from .paths import CACHE, MODELS, TTS, VOICES, model_homes  # noqa: E402
+from . import languages  # noqa: E402
+from .paths import CACHE, MODELS, TTS, model_homes  # noqa: E402
 
 
 def _python(env: str) -> str:
@@ -52,17 +53,20 @@ def _python(env: str) -> str:
     return str(win if os.name == "nt" else TTS / env / "bin" / "python")
 
 
-VOICES = {
-    "it": {"engine": "voxcpm2", "python": _python("env-a"),
-           "voice": str(VOICES / "voxcpm2_it_ref.wav"), "label": "VoxCPM2 (Italian narrator)"},
-    "en": {"engine": "qwen3", "python": _python("env-c"),
-           "speaker": "aiden", "language": "English", "label": "Qwen3-TTS · Aiden"},
-}
+def _voice_python(voice: str) -> str:
+    return _python(languages.VOICE_MODELS[voice]["env"])
+
+
+def installed_voices() -> set[str]:
+    """The voice models whose environment is on this computer (the installer makes only the chosen ones)."""
+    return {v for v in languages.VOICE_MODELS if Path(_voice_python(v)).exists()}
 
 
 def voices(data: Path) -> dict:
-    """Built-in voices, overridable per language in <data>/voices.json."""
-    out = {k: dict(v) for k, v in VOICES.items()}
+    """The voice of each installed language that one of the installed voice models can speak (see
+    languages.py), overridable per language in <data>/voices.json. A narrator made on this computer is in
+    <data>/narrators/."""
+    out = languages.voice_table(languages.enabled(os.environ), installed_voices(), _voice_python, data=data)
     f = data / "voices.json"
     if f.exists():
         for lang, v in json.loads(f.read_text(encoding="utf-8")).items():
@@ -80,7 +84,6 @@ def voice_library(data: Path, lang: str) -> dict:
     if voices(data).get(lang, {}).get("engine") != "voxcpm2":
         return {}
     out = {}
-    # (the module's VOICES is the table of built-in voices; the folder of clips is paths.VOICES)
     for folder in (paths.VOICES / lang, data / "voices" / lang):
         if not folder.is_dir():
             continue

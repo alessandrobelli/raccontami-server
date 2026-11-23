@@ -22,6 +22,8 @@ import threading
 import time
 from pathlib import Path
 
+from . import languages
+
 CONTINUE, HOLD, DELETE, LEAVE = "continue", "hold", "delete", "leave"
 HELD = "held"  # the state of a job on hold, in status.json and for the phone
 
@@ -189,7 +191,7 @@ def facts(job: Path, kind: str) -> dict:
     tokens = meta.get("tokens") if isinstance(meta.get("tokens"), list) else []
     out = {"title": label.get("title") if isinstance(label.get("title"), str) else None,
            "device": label.get("device") if isinstance(label.get("device"), str) else None,
-           "language": {"en": "English", "it": "Italian"}.get(meta.get("lang"), meta.get("lang") or "unknown language"),
+           "language": languages.name(meta.get("lang")) if meta.get("lang") else "unknown language",
            "words": len(tokens)}
     try:
         out["sent"] = int((job / "meta.json").stat().st_mtime)

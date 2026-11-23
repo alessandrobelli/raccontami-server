@@ -7,4 +7,5 @@ token.txt
 # the Windows installer's build (installer\build.ps1)
 /installer/cache/
 /installer/build/
-/installer/output/
+/installer/output*/
+/installer/narrator-candidates/

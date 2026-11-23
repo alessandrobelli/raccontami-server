@@ -41,6 +41,18 @@ class TrayTest(unittest.TestCase):
         rows = connect_window.facts("http://192.168.1.4:8765", "abc", "token.txt", None)
         self.assertIn("no code to compare", connect_window.as_text(rows))
 
+    def test_without_an_address_the_port_said_is_the_servers(self):
+        rows = connect_window.facts(None, "abc", "token.txt", None, port=8766)
+        self.assertIn("port 8766", rows[0][1])
+
+    def test_on_another_port_the_app_is_told_to_type_the_address(self):
+        rows = connect_window.facts("https://192.168.1.4:8766", "abc", "token.txt", None, port=8766)
+        self.assertIn("type this address", rows[0][2].lower())
+
+    def test_on_8765_the_search_finds_the_server(self):
+        rows = connect_window.facts("https://192.168.1.4:8765", "abc", "token.txt", None)
+        self.assertIn("Search local network", rows[0][2])
+
     def switched_off(self, check):
         import os
         before = os.environ.get("RACCONTAMI_TRAY")

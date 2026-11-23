@@ -59,6 +59,11 @@ Remove-Item -Recurse -Force $unpacked
 & (Join-Path $python "python.exe") -c "import tkinter, venv, ensurepip, ssl, sqlite3"
 if ($LASTEXITCODE) { throw "The assembled Python is missing a module" }
 
+# the installer's list of languages, from raccontami_sync\languages.py (the one place that names them)
+$langs = & (Join-Path $python "python.exe") (Join-Path $Here "languages_iss.py")
+if ($LASTEXITCODE) { throw "Could not write the list of languages" }
+[System.IO.File]::WriteAllText((Join-Path $build "languages.iss"), ($langs -join "`r`n"), (New-Object System.Text.UTF8Encoding $false))
+
 $version = (Get-Content (Join-Path $Repo "version.json") -Raw | ConvertFrom-Json).version
 Write-Host "compiling the installer for version $version"
 & $Iscc "/DAppVersion=$version" "/DRepo=$Repo" "/DPythonDir=$python" (Join-Path $Here "raccontami.iss")
