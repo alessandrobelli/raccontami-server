@@ -25,6 +25,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "2")  # the word-timing models are load
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("HF_HUB_VERBOSITY", "error")
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")  # no usage reports to Hugging Face (README, Privacy)
 # the same files the server loads: without this, a model with only the older weight format makes the loader
 # fetch a converted copy in the background, 1.3 GB more, unfinished when this script ends (the server sets it too)
 os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "1")

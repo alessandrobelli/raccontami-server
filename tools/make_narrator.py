@@ -24,7 +24,8 @@ settings.load()  # the models folder may be named there
 from raccontami_sync.paths import MODELS, model_homes  # noqa: E402
 
 os.environ.update(model_homes(os.environ, MODELS))
-for _name, _value in (("HF_HUB_DISABLE_SYMLINKS_WARNING", "1"), ("HF_HUB_VERBOSITY", "error"), ("TRANSFORMERS_VERBOSITY", "error")):
+for _name, _value in (("HF_HUB_DISABLE_SYMLINKS_WARNING", "1"), ("HF_HUB_VERBOSITY", "error"), ("TRANSFORMERS_VERBOSITY", "error"),
+                      ("HF_HUB_DISABLE_TELEMETRY", "1")):  # no usage reports to Hugging Face (README, Privacy)
     os.environ.setdefault(_name, _value)
 
 

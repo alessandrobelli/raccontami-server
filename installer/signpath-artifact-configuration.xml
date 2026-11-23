@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration for the Windows installer: paste it into the SignPath project as the
+     artifact configuration with the slug "installer". GitHub hands SignPath the installer as a zip
+     (actions/upload-artifact), so the root is a zip-file holding the one .exe to sign. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="Raccontami-Server-Setup.exe">
+      <authenticode-sign/>
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

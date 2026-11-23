@@ -49,6 +49,7 @@ os.environ.update(model_homes(os.environ, MODELS_DIR))
 # (Windows without symlinks, no Hugging Face account, torch's "Redirects are not supported")
 for _name, _value in (("HF_HUB_DISABLE_PROGRESS_BARS", "1"), ("HF_HUB_DISABLE_SYMLINKS_WARNING", "1"), ("HF_HUB_VERBOSITY", "error"),
                       ("TRANSFORMERS_VERBOSITY", "error"),
+                      ("HF_HUB_DISABLE_TELEMETRY", "1"),  # no usage reports to Hugging Face (README, Privacy)
                       # a word-timing model with only the older weight format is loaded as it is: otherwise the
                       # loader fetches a converted copy in the background, 1.3 GB more, at the first sync
                       ("DISABLE_SAFETENSORS_CONVERSION", "1")):
