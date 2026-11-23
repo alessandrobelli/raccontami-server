@@ -48,14 +48,11 @@ same steps but have not been run on real hardware yet; reports welcome.
 
 ### Windows
 
-1. Open **PowerShell** on the PC (Start menu, type "PowerShell", press Enter), paste this one line
-   and press Enter:
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/alessandrobelli/raccontami-server/main/install/setup.ps1 | iex"
-   ```
-   Or save the file [Install Raccontami server.cmd](https://github.com/alessandrobelli/raccontami-server/raw/main/Install%20Raccontami%20server.cmd)
-   (right-click the link, **Save link as…**; a plain click only shows its text) and double-click
-   it. It does the same, but Windows may first warn about a file from the internet it does not know.
+1. **Download the installer: [Install-Raccontami-server.cmd](https://github.com/alessandrobelli/raccontami-server/releases/download/installer/Install-Raccontami-server.cmd)**.
+   If your browser asks whether to keep the file, keep it.
+2. **Open it** from your downloads. Windows may show *Windows protected your PC*, because the file
+   is not signed: click **More info**, then **Run anyway**. A window opens and the setup runs in it.
+3. **Answer its two questions**, or press Enter for the usual answers.
 
    **What it installs, and where.** The setup asks for a folder; press Enter for the usual one,
    `C:\Users\<you>\raccontami`. Everything goes into that folder: the server's code, Python 3.12
@@ -65,20 +62,27 @@ same steps but have not been run on real hardware yet; reports welcome.
    free space is checked on each drive. Nothing is installed in Windows itself, and no administrator is needed, except for the
    firewall question below. On a fast connection it takes around half an hour; it can be stopped
    and run again, and keeps what is already there.
-2. At the end the installer asks three questions. Yes to all three is the usual answer; a no can
+4. At the end the installer asks three questions. Yes to all three is the usual answer; a no can
    be changed later, and its last lines say how.
    - **May phones on your home network reach the server?** It adds a Windows firewall rule, for
      which Windows asks an administrator's permission.
    - **Start the server at login?** It then runs without a window, as an icon next to the clock.
    - **Start the server now?** Its window opens.
-3. **When it works**, a window titled *Raccontami server* opens and shows, under **CONNECT THE
+5. **When it works**, a window titled *Raccontami server* opens and shows, under **CONNECT THE
    PHONE**, the three things the phone needs: the **Address** (like `https://192.168.1.20:8765`),
    the **Token** (the server's password) and a **Code** of twenty digits. Started without a window,
    the same is under **Connect the phone** in the menu of its icon next to the clock.
-4. Go on with [Connect this phone](#connect-this-phone).
+6. Go on with [Connect this phone](#connect-this-phone).
 
 To start the server yourself, double-click `start-server.bat` in the folder you chose, or
 `Raccontami server (no window)` beside it.
+
+The same setup without downloading a file: open **PowerShell** (Start menu, type "PowerShell"),
+paste this line and press Enter.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/alessandrobelli/raccontami-server/main/install/setup.ps1 | iex"
+```
 
 With git, Python 3.12 and ffmpeg already installed, the installer can also be run from a clone:
 
@@ -276,8 +280,8 @@ The server's page says which version it is, and **Check for a newer version** th
 whether there is a later one. It asks only when the button is pressed; the server itself never
 looks.
 
-To update, stop the server and run the setup again, the same way as the first time, with the same
-folder. It brings the new code and adds what is missing. Your settings, token, certificate and
+To update, stop the server and open the installer again, with the same folder: the file downloaded
+the first time still works, because it always fetches the newest setup. It brings the new code and adds what is missing. Your settings, token, certificate and
 jobs are kept. With a git clone instead: `git pull`, then the install script again (the same on
 Linux).
 

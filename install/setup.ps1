@@ -14,7 +14,8 @@
   In PowerShell, without downloading a file first:
     irm https://raw.githubusercontent.com/alessandrobelli/raccontami-server/main/install/setup.ps1 | iex
 
-  Or double-click "Install Raccontami server.cmd", which does the same.
+  Or download and open Install-Raccontami-server.cmd, which does the same:
+    https://github.com/alessandrobelli/raccontami-server/releases/download/installer/Install-Raccontami-server.cmd
 #>
 param(
     [string]$RaccontamiHome,     # where everything goes; asked when not given
