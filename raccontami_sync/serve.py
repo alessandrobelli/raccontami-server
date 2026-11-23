@@ -41,7 +41,7 @@ def quiet_drops(loop, context) -> None:
 
 
 def use_own_tools(env=None) -> str | None:
-    """Puts the ffmpeg that the one-file setup brought (<home>/tools/ffmpeg/bin) first on the PATH
+    """Puts the ffmpeg that the installer (.exe) brought (<home>/tools/ffmpeg/bin) first on the PATH
     of this server and of what it starts, and returns that folder; None when there is none, and the
     computer's own ffmpeg is used as before. Done here and not in a start file, so that it also
     holds for the start without a window."""
