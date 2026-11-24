@@ -50,8 +50,8 @@ same steps but have not been run on real hardware yet; reports welcome.
 
 1. **Download the installer: [Raccontami-Server-Setup.exe](https://github.com/alessandrobelli/raccontami-server/releases/download/installer/Raccontami-Server-Setup.exe)**.
 2. **Open it** from your downloads. Windows may show *Windows protected your PC*, because the
-   installer is not signed yet: click **More info**, then **Run anyway**. See the
-   [code signing policy](#code-signing-policy).
+   installer is not signed: click **More info**, then **Run anyway**. To check the download first,
+   see the [code signing policy](#code-signing-policy).
 3. **Follow its pages.** Next on each one gives the usual answers.
    - **Folder:** where the server goes, usually `C:\Users\<you>\raccontami`. Its code, its own
      Python and ffmpeg, and its Python packages (about 15 GB) go there. Nothing is installed in
@@ -499,7 +499,7 @@ hours.
 
 | You see | Why, and what to do |
 |---|---|
-| *Windows protected your PC* when opening the installer | The installer is not signed yet, so Windows does not know it. Click **More info**, then **Run anyway**. It is built from this repository by GitHub (the *Windows installer* workflow), and its SHA-256 is listed with each build |
+| *Windows protected your PC* when opening the installer | The installer is not signed, so Windows does not know it. Click **More info**, then **Run anyway**. It is built from this repository by GitHub (the *Windows installer* workflow), and its SHA-256 is in `SHA256.txt` on the release page: see the [code signing policy](#code-signing-policy) |
 | The installer's second window stops with an error | The lines above the error say which step failed (often the connection, or a full drive). Open the installer again: what is done is kept, and it continues from there |
 | The app can't reach the server | Open the server's address in the phone's browser, starting with `https://` (`http://` with `RACCONTAMI_TLS=0`). A reachable server shows a certificate warning, which is expected because the certificate is its own, and then its page. No answer at all: the server is not running, the address or the network is wrong, or the firewall blocks it (next line) |
 | The app says "The server refused the token" | The token in the app is not this server's (it changes when `token.txt` in the data folder is deleted, or with `RACCONTAMI_TOKEN`). Copy it again from the server's window or its **Connect the phone** window, and tap **Test and save** |
@@ -533,13 +533,22 @@ one, by Muhammet Poyraz, CC BY 4.0), VoxCPM2 (Apache 2.0), Qwen3-TTS (Apache 2.0
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org). *(Not signed yet: an application to SignPath Foundation
-is planned, and until it is granted the installer is not signed.)*
+The Windows installer is not signed: the project has no code-signing certificate yet. That is why
+Windows shows *Windows protected your PC* when it is opened (click **More info**, then **Run
+anyway**).
 
-The Windows installer is built from this repository's source by GitHub Actions
-([.github/workflows/installer.yml](.github/workflows/installer.yml)); only that build is signed, and
-each release is signed only after a person approves it.
+The installer is built from this repository's source by GitHub Actions
+([.github/workflows/installer.yml](.github/workflows/installer.yml)), not on a personal computer. To
+check that your download is that build, compare its SHA-256 with `SHA256.txt` on the
+[release page](https://github.com/alessandrobelli/raccontami-server/releases/tag/installer). In
+PowerShell, in your downloads folder:
+
+```powershell
+Get-FileHash .\Raccontami-Server-Setup.exe
+```
+
+If the installer is signed later, only that GitHub build will be signed, and each release only after
+a person approves it.
 
 - Committers and reviewers: [Alessandro Belli](https://github.com/alessandrobelli)
 - Approvers: [Alessandro Belli](https://github.com/alessandrobelli)
