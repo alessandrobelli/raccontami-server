@@ -1,6 +1,7 @@
 """The Windows installer's work once its files are in place: the Python environments, PyTorch, the
 packages, the models, settings.txt and start-server.bat. Run by the installer (installer/raccontami.iss)
-with the Python it brings, in a window of its own so pip and the model download can show progress.
+with the Python it brings, in a window of its own: the setup window (raccontami_sync/console95.py) shows each step and how
+far it is, and <home>\\setup-log.txt keeps everything the steps printed.
 Safe to run again: what is there is kept and only what is missing is added; an environment that exists
 is never made anew (it belongs to the Python that made it).
 
@@ -24,7 +25,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
-from raccontami_sync import langmanage  # noqa: E402
+from raccontami_sync import console95, langmanage  # noqa: E402
 from raccontami_sync import languages as catalogue  # noqa: E402
 from raccontami_sync import settings  # noqa: E402
 from raccontami_sync.paths import model_homes  # noqa: E402
@@ -33,6 +34,8 @@ TORCH_INDEX = "https://download.pytorch.org/whl/cu128"
 TORCH = ["torch==2.11.0", "torchaudio==2.11.0"]
 TORCH_CHECK = "import torch, sys; sys.exit(0 if torch.cuda.is_available() and torch.__version__.startswith('2.11') else 1)"
 PORT = 8765
+PIP_PROGRESS = ["--progress-bar", "raw"]  # "Progress N of M" lines, which the setup window turns into its bar
+LOG = "setup-log.txt"  # in the home folder: every line the steps printed
 PHONE_MODELS = ["facebook/wav2vec2-base-960h", "jonatasgrosman/wav2vec2-large-xlsr-53-italian"]
 
 TEMPLATE = """\
@@ -217,11 +220,12 @@ def plan(home: str, repo: str, python: str, skip_models: bool, phone_models: boo
         if not exists(py):
             steps.append(Step(f"Python environment: {label}", [python, "-m", "venv", folder]))
         steps.append(Step(f"PyTorch with CUDA for the {label} (about 3 GB the first time)",
-                          [py, "-m", "pip", "install", *TORCH, "--index-url", TORCH_INDEX], unless=[py, "-c", TORCH_CHECK]))
+                          [py, "-m", "pip", "install", *TORCH, "--index-url", TORCH_INDEX, *PIP_PROGRESS],
+                          unless=[py, "-c", TORCH_CHECK]))
         stamp = (ntpath.join(folder, ".raccontami-packages"), _requirements_print(ntpath.join(repo, requirements)))
         if read(stamp[0]) != stamp[1]:
-            steps.append(Step(f"The other packages for the {label} (a few minutes, nothing is shown meanwhile)",
-                              [py, "-m", "pip", "install", "-q", "-r", ntpath.join(repo, requirements)], stamp=stamp))
+            steps.append(Step(f"The other packages for the {label} (a few minutes)",
+                              [py, "-m", "pip", "install", "-r", ntpath.join(repo, requirements), *PIP_PROGRESS], stamp=stamp))
     server_py = ntpath.join(home, "env", "Scripts", "python.exe")
     if not skip_models:
         names = ", ".join(catalogue.name(lang) for lang in langs)
@@ -324,7 +328,11 @@ def main(argv=None) -> int:
     a.add_argument("--dry-run", action="store_true", help="say what would run, run nothing")
     a.add_argument("--pause-on-error", action="store_true", help="keep the window open after a failure (the installer's window)")
     args = a.parse_args(argv)
-    code = _run(args)
+    try:
+        code = _run(args)
+    except KeyboardInterrupt:  # Ctrl+C, or the window closing
+        print("\nStopped. Run the installer again to continue: what is done is kept.")
+        code = 1
     if code and args.pause_on_error:
         input("\nPress Enter to close this window.")
     return code
@@ -341,11 +349,14 @@ def _run(args) -> int:
     settings_file = ntpath.join(home, settings.FILE)
     start = ntpath.join(home, "start-server.bat")
     models = resolve_models(home, args.models, _read(settings_file), os.environ)
+    notes = []  # shown in the setup window too, which covers these lines while the steps run
     print(f"Home folder: {home}\nModels:      {models.folder}")
     if models.note:
         print(models.note)
+        notes.append(models.note)
     if os.environ.get("HF_HOME") and not models.chosen:
         print(f"             (the Hugging Face models go to {os.environ['HF_HOME']} instead: HF_HOME is set on this computer)")
+        notes.append(f"The Hugging Face models go to {os.environ['HF_HOME']}: HF_HOME is set on this computer.")
     port = resolve_port(args.port, _read(settings_file), os.environ)
     print(f"Port:        {port.number}")
     previous = resolve_languages("", _read(settings_file), {})  # installed before this run
@@ -364,6 +375,7 @@ def _run(args) -> int:
             return 1
         print(f"\nPort {port.number} is used by another program, so the server cannot start until that program stops. "
               f"Or give the server another port: RACCONTAMI_PORT in {settings_file}.")
+        notes.append(f"Port {port.number} is used by another program: the server cannot start until it stops.")
 
     steps = plan(home, repo, sys.executable, args.skip_models, args.phone_models, langs=langs,
                  narrator=args.narrator or None, remake_narrators=args.remake_narrators)
@@ -393,22 +405,32 @@ def _run(args) -> int:
     if removing:
         print("deleted")
     env = step_environment(os.environ, home, models, langs, gpus or None)
-    for s in steps:
-        print(f"\n== {s.label}", flush=True)
-        if s.unless and subprocess.run(s.unless, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-            print("already there")
-            continue
-        # not captured: pip and the model download write straight to the window and draw their progress
-        if subprocess.run(s.argv, env=env).returncode != 0:
-            print(f"\nThis step failed: {s.label}. The lines above say why. Run the installer again to continue: "
-                  "what is done is kept.")
-            return 1
-        if s.stamp:  # an update skips this step while what it depends on is unchanged
-            Path(s.stamp[0]).write_text(s.stamp[1], encoding="utf-8")
-
-    Path(start).write_bytes(batch_bytes(start_file_text(home, repo, ntpath.join(home, "env", "Scripts", "python.exe"), port.number)))
-    shutil.rmtree(ntpath.join(home, "pip-cache"), ignore_errors=True)
-    print(f"\nDone.\nSettings:   {settings_file}\nStart file: {start}")
+    log = ntpath.join(home, LOG)
+    info = [f"Installing to {home}", f"Languages: {', '.join(catalogue.name(lang) for lang in langs)}   Port: {port.number}",
+            *(f"Note: {n}" for n in notes)]
+    # the steps' output is read by the setup window (console95.py): it shows what they do, the log keeps every line
+    with console95.Screen(info, [s.label for s in steps], log) as screen:
+        for i, s in enumerate(steps):
+            screen.begin(i, "Checking what is already there" if s.unless else "Starting")
+            if s.unless and subprocess.run(s.unless, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                screen.end(i, "skip")
+                continue
+            if console95.run(s.argv, env, screen) != 0:
+                screen.end(i, "fail")
+                drawn = screen.fancy  # a plain window already shows these lines
+                screen.close()
+                print(f"\nThis step failed: {s.label}")
+                if drawn:
+                    print("Its last lines:\n" + "\n".join("  " + x for x in screen.last_lines()))
+                print(f"\nEverything it printed is in {log}\nRun the installer again to continue: what is done is kept.")
+                return 1
+            if s.stamp:  # an update skips this step while what it depends on is unchanged
+                Path(s.stamp[0]).write_text(s.stamp[1], encoding="utf-8")
+            screen.end(i, "done")
+        Path(start).write_bytes(batch_bytes(start_file_text(home, repo, ntpath.join(home, "env", "Scripts", "python.exe"), port.number)))
+        shutil.rmtree(ntpath.join(home, "pip-cache"), ignore_errors=True)
+        screen.finish()
+    print(f"\nDone.\nSettings:   {settings_file}\nStart file: {start}\nLog:        {log}")
     return 0
 
 

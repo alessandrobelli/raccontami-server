@@ -58,7 +58,7 @@ logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").setLeve
 
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile  # noqa: E402
 
-from . import aligners, awake, banner, connect_window, gpu_share, langmanage, languages, narrate, paths, pipeline, settings, single, tray, unfinished  # noqa: E402
+from . import aligners, awake, banner, connect_window, gpu_share, langmanage, languages, narrate, paths, pipeline, serverwindow, settings, single, tray, unfinished  # noqa: E402
 from .gate import Gate  # noqa: E402
 from .jsonfile import read_json, write_json  # noqa: E402
 from .positions import Positions, valid as valid_position  # noqa: E402
@@ -74,7 +74,10 @@ def log(msg: str) -> None:
     """One readable line in the server window and in server.log."""
     now = time.localtime()
     line = time.strftime("%H:%M:%S", now) + "  " + msg
-    print(line, flush=True)
+    if serverwindow.current:  # the Windows 95 window (serverwindow.py); server.log below stays plain
+        serverwindow.current.line(time.strftime("%H:%M:%S", now), msg)
+    else:
+        print(line, flush=True)
     try:
         with open(LOG, "a", encoding="utf-8") as f:
             f.write(time.strftime("%Y-%m-%d ", now) + line + "\n")
@@ -82,10 +85,14 @@ def log(msg: str) -> None:
         pass
 
 
-def log_block(lines: list[str], shown: list[str] | None = None) -> None:
+def log_block(lines: list[str], shown: list[str] | None = None, window: tuple | None = None) -> None:
     """Lines under the last log line, with no time of their own (banner.py): [shown] in the window
-    ([lines] when None), [lines] in server.log, moved under the date there."""
-    print("\n".join(lines if shown is None else shown), flush=True)
+    ([lines] when None), [lines] in server.log, moved under the date there. [window] (title, sections)
+    is what the Windows 95 window draws instead, when there is one."""
+    if serverwindow.current and window:
+        serverwindow.current.block(*window)
+    else:
+        print("\n".join(lines if shown is None else shown), flush=True)
     try:
         with open(LOG, "a", encoding="utf-8") as f:
             f.write("".join(" " * len("2026-01-01 ") + line + "\n" for line in lines))
@@ -447,10 +454,10 @@ async def _lifespan(_app):
     icon = tray.start(NAME, work_summary, work_can, hold_everything, continue_everything, stop_server, log, folder=DATA,
                       connect=lambda: connect_window.facts(for_phone, TOKEN, token_file, code, tray.own_port()))
 
-    def startup(token: str | None) -> list[str]:
-        """The start-up block; [token] None says which file holds it instead."""
+    def startup(token: str | None) -> list:
+        """The start-up block's sections (banner.py); [token] None says which file holds it instead."""
         voices = narrate.voices(DATA)
-        return banner.render([
+        return [
             ("CONNECT THE PHONE   in the app: Settings → Server",
              connect_window.facts(for_phone, token, token_file, code, tray.own_port())),
             ("THIS SERVER", [
@@ -478,12 +485,18 @@ async def _lifespan(_app):
              + ([("On hold", "\n".join(j.label() for j in held),
                   "Not worked on. Continue them from the server's page, or start the server in a window to be "
                   "asked again.")] if held else [])),
-        ])
+        ]
 
-    log(f"Raccontami server {VERSION} is running")
     # the token goes to the window only, never into a log: logs get shared when asking for help.
     # Without a window what is printed ends in a file, so the token is not printed then either.
-    log_block(startup(None), shown=startup(None if HIDDEN else TOKEN))
+    shown = startup(None if HIDDEN else TOKEN)
+    if serverwindow.current:  # the start-up window first, then the Activity window opens under it
+        serverwindow.current.status = lambda: (work_summary(), tray.own_url())
+        log_block(banner.render(startup(None)), window=(f"Raccontami Server {VERSION}", shown))
+        log(f"Raccontami server {VERSION} is running")
+    else:
+        log(f"Raccontami server {VERSION} is running")
+        log_block(banner.render(startup(None)), shown=banner.render(shown))
     if icon is not None and HIDDEN:  # no window: without a word, a double click would seem to do nothing
         icon.announce("The server is running. This icon opens its page, shows how to connect the phone, and stops it."
                       + (f" {len(held)} unfinished job(s) are kept on hold: continue them from this icon's menu."

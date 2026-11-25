@@ -61,6 +61,9 @@ def main() -> None:
     settings.load()  # before anything reads a setting: paths.py does when it is imported
     settings.use_gpus()  # before torch is imported: CUDA reads it once
     use_own_tools()
+    from . import serverwindow
+
+    serverwindow.install()  # the Windows 95 window, in a real console; before uvicorn, so its messages pass through it
     from .paths import DATA
 
     start = options()

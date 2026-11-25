@@ -298,6 +298,13 @@ class PlanTest(unittest.TestCase):
         torch = [s for s in self.plan() if "torch==2.11.0" in s.argv][0]
         self.assertIsNotNone(torch.unless)
 
+    def test_every_pip_step_reports_its_download_progress(self):  # the setup window draws its bar from it
+        pips = [s.argv for s in self.plan() if "pip" in s.argv]
+        self.assertTrue(pips and all(a[a.index("--progress-bar") + 1] == "raw" for a in pips))
+
+    def test_no_pip_step_is_quiet(self):  # -q also hides the progress lines
+        self.assertFalse(any("-q" in s.argv for s in self.plan()))
+
     def test_skip_models_leaves_out_the_download(self):
         self.assertFalse(any("prefetch.py" in a for s in self.plan(skip_models=True) for a in s.argv))
 
@@ -343,6 +350,50 @@ class ServerRunningTest(unittest.TestCase):
 
     def test_another_program_on_the_port_is_not_taken_for_one(self):
         self.assertFalse(install.raccontami_answers(self.serve(b'{"app": "something else"}')))
+
+
+@unittest.skipUnless(sys.platform == "win32", "install.py runs on Windows: its home folder is a Windows path")
+class StepsRunTest(unittest.TestCase):
+    """The step loop itself, with small fake steps in a throwaway home folder (plain output: not a console)."""
+
+    def run_steps(self, *steps):
+        import contextlib
+        import io
+        import shutil
+        import tempfile
+        from unittest import mock
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        out = io.StringIO()
+        with mock.patch.object(install, "plan", return_value=list(steps)), \
+                mock.patch.object(install, "port_in_use", return_value=False), contextlib.redirect_stdout(out):
+            code = install.main(["--home", home, "--languages", "en"])
+        log = (Path(home) / install.LOG).read_text(encoding="utf-8")
+        return code, out.getvalue(), log
+
+    def step(self, label, code, unless=None):
+        return install.Step(label, [sys.executable, "-c", code], unless=[sys.executable, "-c", unless] if unless else None)
+
+    def test_a_good_step_ends_with_done(self):
+        self.assertEqual(0, self.run_steps(self.step("Say hello", "print('hello')"))[0])
+
+    def test_what_a_step_prints_goes_to_the_log(self):
+        self.assertIn("hello from the step", self.run_steps(self.step("Say hello", "print('hello from the step')"))[2])
+
+    def test_a_step_already_there_is_skipped(self):
+        log = self.run_steps(self.step("Already made", "raise SystemExit(3)", unless="pass"))[2]
+        self.assertIn("-- already there", log)
+
+    def test_a_failed_step_stops_the_install(self):
+        self.assertEqual(1, self.run_steps(self.step("Break", "raise SystemExit(2)"), self.step("Never", "print(1)"))[0])
+
+    def test_a_failure_names_the_step(self):
+        out = self.run_steps(self.step("Break", "print('ERROR: no such version'); raise SystemExit(2)"))[1]
+        self.assertIn("This step failed: Break", out)
+
+    def test_a_failure_names_the_log(self):
+        out = self.run_steps(self.step("Break", "raise SystemExit(2)"))[1]
+        self.assertIn("Everything it printed is in", out)
 
 
 if __name__ == "__main__":

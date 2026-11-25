@@ -71,12 +71,16 @@ same steps but have not been run on real hardware yet; reports welcome.
    - **Start at login:** the server then starts without a window, as an icon next to the clock.
 
    A second window then downloads the Python packages and the models: around half an hour on a
-   fast connection, hours on a slow one. If it stops, open the installer again: what is done is kept.
+   fast connection, hours on a slow one. It shows each step and how far it is, in the style of a
+   Windows 95 setup; `setup-log.txt` in the server's folder keeps everything the steps printed. If
+   it stops, open the installer again: what is done is kept.
 4. **When it works**, leave **Start the server now** ticked: a window titled *Raccontami server*
-   shows, under **CONNECT THE PHONE**, the three things the phone needs: the **Address** (like
+   shows, under **Connect the phone**, the three things the phone needs: the **Address** (like
    `https://192.168.1.20:8765`), the **Token** (the server's password) and a **Code** of twenty
-   digits. Started without a window, the same is under **Connect the phone** in the menu of its
-   icon next to the clock.
+   digits. Under it, the *Activity* window lists what the server does, with a status bar at its
+   foot; `server.log` in the data folder keeps the same lines as plain text. Started without a
+   window, the same is under **Connect the phone** in the menu of its icon next to the clock.
+   (`RACCONTAMI_PLAIN=1` gives the plain window of earlier versions.)
 5. Go on with [Connect this phone](#connect-this-phone).
 
 To start the server later: Start menu, **Raccontami server** (without a window) or **Raccontami
@@ -474,6 +478,7 @@ as an environment variable (a service file, `docker run -e`) wins over the file.
 | `RACCONTAMI_KEEP_AWAKE` | on | `0`: Windows may go to sleep while a job runs |
 | `RACCONTAMI_TRAY` | on | `0`: no icon next to the clock |
 | `RACCONTAMI_ASK_SECONDS` | 60 | how long a server started in a window waits for an answer about unfinished work; 0 = for ever |
+| `RACCONTAMI_PLAIN` | unset | `1`: the server's window (and the installer's) prints plain lines instead of the Windows 95 style windows |
 | `RACCONTAMI_HOST`, `RACCONTAMI_PORT` | `0.0.0.0`, `8765` | where the server listens. The installer picks the next free port and writes it here when another program holds 8765; the app's **Search local network** looks on 8765, so on another port type the address the server's window shows |
 | `RACCONTAMI_LANGUAGES` | `en,it` | the installed languages (see [Languages](#languages)); the installer sets this line |
 | `RACCONTAMI_GPUS` | all | the NVIDIA card(s) the server uses, by their number in `nvidia-smi` (`1`); the installer sets it when the PC has several |
@@ -500,7 +505,7 @@ hours.
 | You see | Why, and what to do |
 |---|---|
 | *Windows protected your PC* when opening the installer | The installer is not signed, so Windows does not know it. Click **More info**, then **Run anyway**. It is built from this repository by GitHub (the *Windows installer* workflow), and its SHA-256 is in `SHA256.txt` on the release page: see the [code signing policy](#code-signing-policy) |
-| The installer's second window stops with an error | The lines above the error say which step failed (often the connection, or a full drive). Open the installer again: what is done is kept, and it continues from there |
+| The installer's second window stops with an error | It names the step that failed and shows its last lines (often the connection, or a full drive). Everything the steps printed is in `setup-log.txt` in the server's folder. Open the installer again: what is done is kept, and it continues from there |
 | The app can't reach the server | Open the server's address in the phone's browser, starting with `https://` (`http://` with `RACCONTAMI_TLS=0`). A reachable server shows a certificate warning, which is expected because the certificate is its own, and then its page. No answer at all: the server is not running, the address or the network is wrong, or the firewall blocks it (next line) |
 | The app says "The server refused the token" | The token in the app is not this server's (it changes when `token.txt` in the data folder is deleted, or with `RACCONTAMI_TOKEN`). Copy it again from the server's window or its **Connect the phone** window, and tap **Test and save** |
 | The app says "Server error 404: The server no longer has this story …" (before version 0.3.0: "… unknown job") | The server no longer has that job: it was deleted on the server's page, or the server now runs with another data folder. **Retry** in the app sends the story again |
