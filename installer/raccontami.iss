@@ -1050,6 +1050,7 @@ begin
   DeleteMade(Home + '\tools\ffmpeg');
   DeleteMade(Home + '\pip-cache');
   DeleteMade(Home + '\start-server.bat');
+  DeleteMade(Home + '\setup-log.txt');
   if not DirExists(Home + '\raccontami-server\.git') then
     DeleteMade(Home + '\raccontami-server');
   Models := ModelsFolderNamed(Home);

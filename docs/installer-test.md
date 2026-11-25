@@ -30,7 +30,9 @@ install runs, which needs the disk space and the time.
    it. Write down exactly what Windows shows.
 3. Go through the pages: folder, models folder, the two options. Tick the firewall option once and
    check that the permission prompt names *Network Command Shell* (netsh), from Microsoft.
-4. Let it finish (with or without `/DRYRUN`) and start the server from the last page.
+4. Let it finish (with or without `/DRYRUN`) and start the server from the last page. In the second
+   window (the Windows 95 style setup screen) check that the bar or the clock always moves, also
+   during the long downloads, and that `setup-log.txt` in the server's folder holds the steps' output.
 5. Open PowerShell and look for detections:
 
    ```powershell
