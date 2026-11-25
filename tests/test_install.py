@@ -352,6 +352,7 @@ class ServerRunningTest(unittest.TestCase):
         self.assertFalse(install.raccontami_answers(self.serve(b'{"app": "something else"}')))
 
 
+@unittest.skipUnless(sys.platform == "win32", "install.py runs on Windows: its home folder is a Windows path")
 class StepsRunTest(unittest.TestCase):
     """The step loop itself, with small fake steps in a throwaway home folder (plain output: not a console)."""
 
